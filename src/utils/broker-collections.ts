@@ -8,14 +8,30 @@ import {
 
 export const BROKER_COMBINED_ACCOUNT_ID = "combined";
 
+export interface PortfolioCollectionTabEntry {
+  id: string;
+  name: string;
+  kind: "portfolio";
+}
+
+export interface BrokerInstanceAccounts {
+  portfolioIds: string[];
+  accountIds: string[];
+}
+
+export interface BrokerInstancePortfolioGroup {
+  instanceId: string;
+  accountPortfolios: Portfolio[];
+}
+
 export function buildBrokerCombinedPortfolioId(brokerInstanceId: string): string {
   return buildBrokerPortfolioId(brokerInstanceId, BROKER_COMBINED_ACCOUNT_ID);
 }
 
 export function isBrokerCombinedPortfolioId(collectionId: string | null | undefined): boolean {
-  if (!collectionId || !isBrokerPortfolioId(collectionId)) return false;
-  const suffix = collectionId.split(":").pop();
-  return suffix === BROKER_COMBINED_ACCOUNT_ID;
+  if (!collectionId) return false;
+  const parsed = parseBrokerCollectionId(collectionId);
+  return parsed?.isCombined ?? false;
 }
 
 export interface ParsedBrokerCollectionId {
@@ -39,17 +55,24 @@ export function parseBrokerCollectionId(collectionId: string): ParsedBrokerColle
   };
 }
 
+export function getBrokerInstanceAccounts(config: AppConfig, instanceId: string): BrokerInstanceAccounts {
+  const portfolioIds: string[] = [];
+  const accountIds: string[] = [];
+  for (const portfolio of config.portfolios) {
+    if (portfolio.brokerInstanceId === instanceId && portfolio.brokerAccountId) {
+      portfolioIds.push(portfolio.id);
+      accountIds.push(portfolio.brokerAccountId);
+    }
+  }
+  return { portfolioIds, accountIds };
+}
+
 export function getBrokerInstanceAccountPortfolioIds(config: AppConfig, instanceId: string): string[] {
-  return config.portfolios
-    .filter((portfolio) => portfolio.brokerInstanceId === instanceId && portfolio.brokerAccountId)
-    .map((portfolio) => portfolio.id);
+  return getBrokerInstanceAccounts(config, instanceId).portfolioIds;
 }
 
 export function getBrokerInstanceAccountIds(config: AppConfig, instanceId: string): string[] {
-  return config.portfolios
-    .filter((portfolio) => portfolio.brokerInstanceId === instanceId && portfolio.brokerAccountId)
-    .map((portfolio) => portfolio.brokerAccountId!)
-    .filter((accountId) => accountId.length > 0);
+  return getBrokerInstanceAccounts(config, instanceId).accountIds;
 }
 
 export function resolveCollectionPortfolioIds(config: AppConfig, collectionId: string): string[] {
@@ -59,6 +82,51 @@ export function resolveCollectionPortfolioIds(config: AppConfig, collectionId: s
     return getBrokerInstanceAccountPortfolioIds(config, parsed.instanceId);
   }
   return [collectionId];
+}
+
+export function groupBrokerPortfoliosByInstance(config: AppConfig): BrokerInstancePortfolioGroup[] {
+  const groups = new Map<string, Portfolio[]>();
+  for (const portfolio of config.portfolios) {
+    if (!portfolio.brokerInstanceId || !portfolio.brokerAccountId) continue;
+    const accountPortfolios = groups.get(portfolio.brokerInstanceId) ?? [];
+    accountPortfolios.push(portfolio);
+    groups.set(portfolio.brokerInstanceId, accountPortfolios);
+  }
+  return [...groups.entries()].map(([instanceId, accountPortfolios]) => ({
+    instanceId,
+    accountPortfolios,
+  }));
+}
+
+export function buildPortfolioCollectionEntries(config: AppConfig): PortfolioCollectionTabEntry[] {
+  const manualEntries: PortfolioCollectionTabEntry[] = config.portfolios
+    .filter((portfolio) => !portfolio.brokerInstanceId || !portfolio.brokerAccountId)
+    .map((portfolio) => ({
+      id: portfolio.id,
+      name: portfolio.name,
+      kind: "portfolio",
+    }));
+
+  const brokerEntries: PortfolioCollectionTabEntry[] = [];
+  for (const { instanceId, accountPortfolios } of groupBrokerPortfoliosByInstance(config)) {
+    if (accountPortfolios.length >= 2) {
+      const instance = getBrokerInstance(config.brokerInstances, instanceId);
+      brokerEntries.push({
+        id: buildBrokerCombinedPortfolioId(instanceId),
+        name: instance?.label ?? instanceId,
+        kind: "portfolio",
+      });
+    }
+    for (const portfolio of accountPortfolios) {
+      brokerEntries.push({
+        id: portfolio.id,
+        name: portfolio.name,
+        kind: "portfolio",
+      });
+    }
+  }
+
+  return [...manualEntries, ...brokerEntries];
 }
 
 export function buildSyntheticCombinedPortfolio(config: AppConfig, collectionId: string): Portfolio | null {

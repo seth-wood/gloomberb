@@ -151,9 +151,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     config.baseCurrency,
     effectiveExchangeRates,
     isPortfolioTab,
-    activeCollectionId,
-    config,
-  ), [activeCollectionId, config.baseCurrency, effectiveExchangeRates, financialsMap, isPortfolioTab, tickers]);
+    activePortfolioIds,
+  ), [activePortfolioIds, config.baseCurrency, effectiveExchangeRates, financialsMap, isPortfolioTab, tickers]);
 
   const columnContext: ColumnContext = useMemo(() => ({
     activePortfolioIds: isPortfolioTab ? activePortfolioIds : undefined,
@@ -352,7 +351,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const summaryFooterInfo = useMemo(() => buildPortfolioFooterSegments({
     accountState: accountState ? { account: accountState.account, sourceLabel: accountState.sourceLabel } : null,
     accountStatusText: isPortfolioTab && currentPortfolio?.brokerInstanceId && !accountState ? "Acct missing" : undefined,
-    activeCollectionId,
+    portfolioScope: activePortfolioIds,
     baseCurrency: config.baseCurrency,
     exchangeRates: effectiveExchangeRates,
     financialsMap,
@@ -361,10 +360,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     refreshingSize,
     sortedTickers,
     width,
-    config,
   }), [
     accountState,
-    activeCollectionId,
+    activePortfolioIds,
     currentPortfolio?.brokerInstanceId,
     effectiveExchangeRates,
     financialsMap,

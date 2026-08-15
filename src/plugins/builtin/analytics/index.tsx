@@ -14,9 +14,9 @@ import {
 import { useChartQueries, useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { usePortfolioAccountState } from "../portfolio-list/header";
-import { buildPortfolioCollectionEntries } from "../portfolio-list/settings";
+import { getCollectionTickersFromConfig } from "../portfolio-list/pane/data";
 import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
-import { resolveCollectionPortfolioIds } from "../../../utils/broker-collections";
+import { buildPortfolioCollectionEntries, resolveCollectionPortfolioIds } from "../../../utils/broker-collections";
 import {
   buildPerformanceChartPoints,
   useBrokerPortfolioPerformance,
@@ -46,7 +46,7 @@ import {
   type SectorSortPreference,
   type SectorTableRow,
 } from "./sector-model";
-import { resolvePortfolioId, resolveTemplatePortfolioId, resolveActivePortfolio } from "./portfolio-selection";
+import { resolveCollectionId, resolveTemplatePortfolioId, resolveActivePortfolio } from "./portfolio-selection";
 import {
   AnalyticsMetricsPanel,
   PortfolioHistorySection,
@@ -65,7 +65,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const requestedPortfolioId = paneInstance?.params?.portfolioId ?? paneInstance?.params?.collectionId;
   const fallbackPortfolioId = useMemo(
     () => (
-      resolvePortfolioId(config, requestedPortfolioId)
+      resolveCollectionId(config, requestedPortfolioId)
       ?? resolveTemplatePortfolioId(config, focusedCollectionId)
       ?? ""
     ),
@@ -76,7 +76,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
   const [sectorSort, setSectorSort] = useState<SectorSortPreference>(DEFAULT_SECTOR_SORT);
 
-  const activePortfolioId = resolvePortfolioId(config, currentPortfolioId) ?? fallbackPortfolioId;
+  const activePortfolioId = resolveCollectionId(config, currentPortfolioId) ?? fallbackPortfolioId;
   const activePortfolio = useMemo(
     () => resolveActivePortfolio(config, activePortfolioId),
     [activePortfolioId, config],
@@ -96,12 +96,10 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   }, [setCurrentPortfolioId]);
 
   const portfolioTickers = useMemo(() => {
-    if (!activePortfolioId || activePortfolioIds.length === 0) return [];
-    const portfolioIdSet = new Set(activePortfolioIds);
-    return [...tickersBySymbol.values()]
-      .filter((ticker) => ticker.metadata.portfolios.some((portfolioId) => portfolioIdSet.has(portfolioId)))
-      .filter((ticker) => hasPortfolioPosition(ticker, activePortfolioIds));
-  }, [activePortfolioId, activePortfolioIds, tickersBySymbol]);
+    if (!activePortfolioId) return [];
+    const tickers = getCollectionTickersFromConfig(config, tickersBySymbol, activePortfolioId);
+    return tickers.filter((ticker) => hasPortfolioPosition(ticker, activePortfolioIds));
+  }, [activePortfolioId, activePortfolioIds, config, tickersBySymbol]);
 
   const chartTargets = useMemo(
     () => buildPortfolioChartTargets(portfolioTickers),
@@ -159,10 +157,9 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       baseCurrency,
       effectiveExchangeRates,
       true,
-      activePortfolioId || null,
-      config,
+      activePortfolioIds,
     ),
-    [activePortfolioId, baseCurrency, config, effectiveExchangeRates, financials, portfolioTickers],
+    [activePortfolioIds, baseCurrency, effectiveExchangeRates, financials, portfolioTickers],
   );
 
   const portfolioReturnSeries = useMemo(

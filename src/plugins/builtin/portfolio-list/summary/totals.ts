@@ -1,9 +1,7 @@
-import type { AppConfig } from "../../../../types/config";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { convertCurrency } from "../../../../utils/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
-import { resolveCollectionPortfolioIds } from "../../../../utils/broker-collections";
 import { getPortfolioPositionMetrics, resolveBrokerFallbackMarketValue } from "../position-metrics";
 
 export interface PortfolioSummaryTotals {
@@ -24,8 +22,7 @@ export function calculatePortfolioSummaryTotals(
   baseCurrency: string,
   exchangeRates: Map<string, number>,
   isPortfolio: boolean,
-  collectionId: string | null,
-  config?: AppConfig,
+  portfolioScope: readonly string[] | undefined,
 ): PortfolioSummaryTotals {
   let totalMktValue = 0;
   let totalPrevValue = 0;
@@ -33,9 +30,7 @@ export function calculatePortfolioSummaryTotals(
   let hasPositions = false;
   let watchlistChangeSum = 0;
   let watchlistCount = 0;
-  const portfolioScope = isPortfolio && collectionId
-    ? (config ? resolveCollectionPortfolioIds(config, collectionId) : collectionId)
-    : undefined;
+  const scopedPortfolioIds = isPortfolio ? portfolioScope : undefined;
 
   for (const ticker of tickers) {
     const financials = financialsMap.get(ticker.metadata.ticker);
@@ -51,7 +46,7 @@ export function calculatePortfolioSummaryTotals(
       continue;
     }
 
-    const positionMetrics = getPortfolioPositionMetrics(ticker, portfolioScope, quoteCurrency);
+    const positionMetrics = getPortfolioPositionMetrics(ticker, scopedPortfolioIds, quoteCurrency);
     const { positionCurrency, totalPriceUnits, totalCost } = positionMetrics;
     const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
     const toBaseQuote = (value: number) => convertCurrency(value, quoteCurrency, baseCurrency, exchangeRates);

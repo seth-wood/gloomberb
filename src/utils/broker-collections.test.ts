@@ -3,10 +3,10 @@ import { createDefaultConfig } from "../types/config";
 import {
   buildBrokerCombinedPortfolioId,
   buildSyntheticCombinedPortfolio,
+  buildPortfolioCollectionEntries,
   isBrokerCombinedPortfolioId,
   resolveCollectionPortfolioIds,
 } from "./broker-collections";
-import { buildPortfolioCollectionEntries } from "../plugins/builtin/portfolio-list/settings";
 
 describe("broker-collections", () => {
   test("builds a combined portfolio id and resolves member portfolios", () => {

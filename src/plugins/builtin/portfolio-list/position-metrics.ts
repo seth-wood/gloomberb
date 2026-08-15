@@ -46,18 +46,20 @@ function resolvePositionCostMultiplier(
   return withoutMultiplierError < withMultiplierError ? 1 : priceMultiplier;
 }
 
+export function filterPositionsByPortfolioScope(
+  positions: TickerRecord["metadata"]["positions"],
+  portfolioScope: readonly string[] | undefined,
+): TickerRecord["metadata"]["positions"] {
+  if (portfolioScope == null) return positions;
+  return positions.filter((position) => portfolioScope.includes(position.portfolio));
+}
+
 export function getPortfolioPositionMetrics(
   ticker: TickerRecord,
-  portfolioScope: string | readonly string[] | undefined,
+  portfolioScope: readonly string[] | undefined,
   fallbackCurrency: string,
 ): PortfolioPositionMetrics {
-  const tabPositions = portfolioScope == null
-    ? ticker.metadata.positions
-    : ticker.metadata.positions.filter((position) => (
-      typeof portfolioScope === "string"
-        ? position.portfolio === portfolioScope
-        : portfolioScope.includes(position.portfolio)
-    ));
+  const tabPositions = filterPositionsByPortfolioScope(ticker.metadata.positions, portfolioScope);
   const positionCurrency = getPositionCurrency(tabPositions, fallbackCurrency);
   let totalShares = 0;
   let totalCost = 0;
