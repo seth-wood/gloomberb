@@ -135,6 +135,25 @@ describe("schwabBroker.getStatus", () => {
     expect(getSchwabStatus(instance.id).state).toBe("connected");
   });
 
+  test("ignores legacy tokens stored without a credential fingerprint", () => {
+    attachSchwabPersistence(new MemoryPluginPersistence());
+    const config = normalizeSchwabConfig({
+      appKey: "app-key",
+      appSecret: "app-secret",
+      callbackUrl: "https://127.0.0.1:8182",
+    });
+    storeSchwabTokens("instance-legacy", {
+      accessToken: "access",
+      refreshToken: "refresh",
+      accessExpiresAt: Date.now() + 3_600_000,
+      refreshExpiresAt: Date.now() + 86_400_000,
+      updatedAt: Date.now(),
+    });
+
+    expect(getStoredSchwabTokensForConfig("instance-legacy", config)).toBeNull();
+    expect(getStoredSchwabTokens("instance-legacy")?.refreshToken).toBe("refresh");
+  });
+
   test("ignores tokens tied to a different credential fingerprint without deleting them", () => {
     attachSchwabPersistence(new MemoryPluginPersistence());
     const config = normalizeSchwabConfig({

@@ -9,30 +9,21 @@ import { getPortfolioPositionMetrics, resolveBrokerFallbackMarketValue } from ".
 export function getPortfolioPositionValue({
   ticker,
   financials,
-  portfolioId,
+  activePortfolioIds,
   baseCurrency,
   exchangeRates,
 }: {
   ticker: TickerRecord | null;
   financials: TickerFinancials | null;
-  portfolioId: string | null;
+  activePortfolioIds?: readonly string[];
   baseCurrency: string;
   exchangeRates: Map<string, number>;
 }): number {
   if (!ticker) return 0;
-  const scopedTicker: TickerRecord = portfolioId
-    ? {
-        ...ticker,
-        metadata: {
-          ...ticker.metadata,
-          positions: ticker.metadata.positions.filter((position) => position.portfolio === portfolioId),
-        },
-      }
-    : ticker;
   const quote = financials?.quote;
   const activeQuote = getActiveQuoteDisplay(quote);
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
-  const metrics = getPortfolioPositionMetrics(scopedTicker, undefined, quoteCurrency);
+  const metrics = getPortfolioPositionMetrics(ticker, activePortfolioIds, quoteCurrency);
 
   if (activeQuote && metrics.totalPriceUnits !== 0) {
     return convertCurrency(Math.abs(metrics.totalPriceUnits) * activeQuote.price, quoteCurrency, baseCurrency, exchangeRates);

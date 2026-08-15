@@ -247,7 +247,7 @@ export function buildPortfolioPaneSettingsDef(
   const collectionEntries = getCollectionEntries(config);
   const allCollectionOptions = resolveCollectionOptions(collectionEntries);
   const activeCollectionIsPortfolio = !!activeCollectionId
-    && config.portfolios.some((portfolio) => portfolio.id === activeCollectionId);
+    && isPortfolioCollectionId(config, activeCollectionId);
 
   const fields: PaneSettingsDef["fields"] = [
     {

@@ -27,6 +27,7 @@ import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../runtime
 import { PluginRegistry, setSharedMarketDataForTests, setSharedRegistryForTests } from "../../../registry";
 import type { BrokerAdapter } from "../../../../types/broker";
 import { colors } from "../../../../theme/colors";
+import { buildBrokerCombinedPortfolioId } from "../../../../utils/broker-collections";
 import { portfolioListModule } from "..";
 
 const TEST_PANE_ID = "portfolio-list:test";
@@ -187,6 +188,57 @@ function createManualCollectionConfig(collectionId: string): AppConfig {
     ...config,
     layout,
     layouts: [{ name: "Default", layout: cloneLayout(layout) }],
+  };
+}
+
+function createSchwabCombinedConfig(): { config: AppConfig; combinedId: string } {
+  const combinedId = buildBrokerCombinedPortfolioId("schwab-main");
+  const config = createDefaultConfig("/tmp/gloomberb-portfolio-list-schwab-combined");
+  const layout: LayoutConfig = {
+    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
+    instances: [{
+      instanceId: TEST_PANE_ID,
+      paneId: "portfolio-list",
+      binding: { kind: "none" as const },
+      params: { collectionId: combinedId },
+      settings: { viewMode: "grid" },
+    }],
+    floating: [],
+    detached: [],
+  };
+
+  return {
+    combinedId,
+    config: {
+      ...config,
+      brokerInstances: [{
+        id: "schwab-main",
+        brokerType: "schwab",
+        label: "Schwab",
+        config: {},
+      }],
+      portfolios: [
+        ...config.portfolios,
+        {
+          id: "broker:schwab-main:HASH1",
+          name: "CASH • HABC",
+          currency: "USD",
+          brokerId: "schwab",
+          brokerInstanceId: "schwab-main",
+          brokerAccountId: "HASH1",
+        },
+        {
+          id: "broker:schwab-main:HASH2",
+          name: "CASH • HDEF",
+          currency: "USD",
+          brokerId: "schwab",
+          brokerInstanceId: "schwab-main",
+          brokerAccountId: "HASH2",
+        },
+      ],
+      layout,
+      layouts: [{ name: "Default", layout: cloneLayout(layout) }],
+    },
   };
 }
 
@@ -879,6 +931,50 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
 
     expect(pinned).toEqual([{ symbol: "AAPL", options: { floating: true, paneType: TICKER_RESEARCH_PANE_ID } }]);
+  });
+
+  test("renders combined Schwab portfolio grid from aggregated positions", async () => {
+    const { config, combinedId } = createSchwabCombinedConfig();
+    const ticker = makeTicker({
+      portfolios: ["broker:schwab-main:HASH1", "broker:schwab-main:HASH2"],
+      positions: [
+        {
+          portfolio: "broker:schwab-main:HASH1",
+          shares: 10,
+          avgCost: 100,
+          currency: "USD",
+          broker: "schwab",
+          brokerInstanceId: "schwab-main",
+          brokerAccountId: "HASH1",
+        },
+        {
+          portfolio: "broker:schwab-main:HASH2",
+          shares: 5,
+          avgCost: 100,
+          currency: "USD",
+          broker: "schwab",
+          brokerInstanceId: "schwab-main",
+          brokerAccountId: "HASH2",
+        },
+      ],
+    });
+
+    testSetup = await testRender(
+      <PortfolioHarness
+        config={config}
+        collectionId={combinedId}
+        ticker={ticker}
+      />,
+      { width: 100, height: 12 },
+    );
+
+    await flushFrame();
+
+    const frame = testSetup.captureCharFrame();
+    expect(frame).toContain("AAPL");
+    expect(frame).toContain("1.9k");
+    expect(frame).toContain("+4.17%");
+    expect(frame).not.toContain("TICKER");
   });
 
   test("keeps watchlists in table view when grid is saved on the pane", async () => {

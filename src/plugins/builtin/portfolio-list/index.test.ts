@@ -7,6 +7,7 @@ import type { PortfolioSummaryTotals } from "./metrics";
 import { buildPortfolioSummarySegments } from "./summary";
 import { shouldToggleCashMarginDrawer } from ".";
 import { needsVisibleQuoteWatchdogRefresh, selectQuoteWarmupTickers, selectStreamTickers } from "./pane/data";
+import { buildBrokerCombinedPortfolioId } from "../../../utils/broker-collections";
 import { buildPortfolioPaneSettingsDef, getPortfolioPaneSettings } from "./settings";
 import { getLanguage, setLanguage } from "../../../i18n";
 
@@ -241,11 +242,41 @@ describe("visible quote refresh predicates", () => {
 describe("portfolio list pane settings", () => {
   test("exposes view mode only for portfolio collections", () => {
     const config = createDefaultConfig("/tmp/gloomberb-portfolio-list-settings");
+    config.brokerInstances = [{
+      id: "schwab-main",
+      brokerType: "schwab",
+      label: "Schwab",
+      config: {},
+    }];
+    config.portfolios.push(
+      {
+        id: "broker:schwab-main:HASH1",
+        name: "CASH • HABC",
+        currency: "USD",
+        brokerId: "schwab",
+        brokerInstanceId: "schwab-main",
+        brokerAccountId: "HASH1",
+      },
+      {
+        id: "broker:schwab-main:HASH2",
+        name: "CASH • HDEF",
+        currency: "USD",
+        brokerId: "schwab",
+        brokerInstanceId: "schwab-main",
+        brokerAccountId: "HASH2",
+      },
+    );
     const settings = getPortfolioPaneSettings({ viewMode: "grid" });
     const portfolioFields = buildPortfolioPaneSettingsDef(config, settings, "main").fields.map((field) => field.key);
+    const combinedFields = buildPortfolioPaneSettingsDef(
+      config,
+      settings,
+      buildBrokerCombinedPortfolioId("schwab-main"),
+    ).fields.map((field) => field.key);
     const watchlistFields = buildPortfolioPaneSettingsDef(config, settings, "watchlist").fields.map((field) => field.key);
 
     expect(portfolioFields).toContain("viewMode");
+    expect(combinedFields).toContain("viewMode");
     expect(watchlistFields).not.toContain("viewMode");
   });
 });

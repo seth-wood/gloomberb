@@ -168,15 +168,15 @@ export function bindPluginRegistryRuntimeAccess({
       && currentInstance
       && nextInstance
       && broker.getSessionKey(currentInstance) !== broker.getSessionKey(nextInstance);
+    if (sessionChanged && currentInstance) {
+      await broker?.disconnect?.(currentInstance).catch(() => {});
+    }
     const nextConfig = {
       ...state.config,
       brokerInstances: nextInstances,
     };
     dispatch({ type: "SET_CONFIG", config: nextConfig });
     await saveConfigImmediately(nextConfig);
-    if (sessionChanged && currentInstance) {
-      await broker?.disconnect?.(currentInstance).catch(() => {});
-    }
     pluginRegistry.events.emit("config:changed", { config: nextConfig });
   };
 

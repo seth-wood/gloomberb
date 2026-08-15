@@ -3,6 +3,7 @@ import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio } from "../../../types/ticker";
+import { isBrokerCombinedPortfolioId } from "../../../utils/broker-collections";
 import { usePluginBrokerActions } from "../../runtime";
 
 export interface BrokerPerformanceState {
@@ -47,9 +48,10 @@ function findBrokerPerformanceCandidates(
   return candidates;
 }
 
-function resolveBrokerAccountId(portfolio: Portfolio | null): string | null {
-  if (portfolio?.brokerAccountId) return portfolio.brokerAccountId;
-  const parts = portfolio?.id.split(":") ?? [];
+export function resolveBrokerAccountId(portfolio: Portfolio | null): string | null {
+  if (!portfolio || isBrokerCombinedPortfolioId(portfolio.id)) return null;
+  if (portfolio.brokerAccountId) return portfolio.brokerAccountId;
+  const parts = portfolio.id.split(":");
   return parts[0] === "broker" && parts.length >= 3 ? parts.slice(2).join(":") : null;
 }
 

@@ -51,7 +51,7 @@ export function getStoredSchwabTokensForConfig(
   if (!tokens) return null;
 
   const credentialKey = schwabCredentialKey(config);
-  if (tokens.credentialKey && tokens.credentialKey !== credentialKey) {
+  if (!tokens.credentialKey || tokens.credentialKey !== credentialKey) {
     return null;
   }
 

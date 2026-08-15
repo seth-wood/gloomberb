@@ -208,7 +208,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const sourceCurrentValue = getPortfolioPositionValue({
     ticker,
     financials,
-    portfolioId: activePortfolioId,
+    activePortfolioIds,
     baseCurrency: config.baseCurrency,
     exchangeRates,
   });
