@@ -145,7 +145,7 @@ export function useTickerFinancialsMap(
   options: TickerInstrumentOptions = {},
 ): Map<string, TickerFinancials> {
   const coordinator = getSharedMarketDataCoordinator();
-  const optionsKey = options.portfolioId ?? "";
+  const optionsKey = options.portfolioIds?.join("\u001f") ?? options.portfolioId ?? "";
   const tickerKey = buildTickerFinancialsMapKey(tickers, options);
   const subscriptionKeys = useMemo(() => buildTickerFinancialsKeys(tickers, options), [optionsKey, tickerKey]);
   const keysVersion = useCoordinatorKeysVersion(subscriptionKeys);

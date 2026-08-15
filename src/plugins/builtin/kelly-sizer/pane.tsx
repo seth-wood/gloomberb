@@ -11,7 +11,11 @@ import type { PaneProps } from "../../../types/plugin";
 import { useFxRatesMap, useTickerFinancials, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { formatCurrency } from "../../../utils/format";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
-import { resolveCollectionPortfolioIds } from "../../../utils/broker-collections";
+import {
+  buildPortfolioCollectionEntries,
+  resolveCollectionPortfolioIds,
+  resolvePortfolioCollection,
+} from "../../../utils/broker-collections";
 import {
   useAppDispatch,
   getFocusedCollectionId,
@@ -166,8 +170,8 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     config,
   });
   const activePortfolio = useMemo(
-    () => config.portfolios.find((portfolio) => portfolio.id === activePortfolioId) ?? null,
-    [activePortfolioId, config.portfolios],
+    () => (activePortfolioId ? resolvePortfolioCollection(config, activePortfolioId) : null),
+    [activePortfolioId, config],
   );
   const portfolioTickers = useMemo(
     () => activePortfolioId ? getCollectionTickersFromConfig(config, tickersBySymbol, activePortfolioId) : [],
@@ -371,8 +375,8 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   }), [focusTickerSearch, result.clipReasons, result.warnings, showSensitivity, toggleSensitivity]);
 
   const portfolioTabs = useMemo(
-    () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
-    [config.portfolios],
+    () => buildPortfolioCollectionEntries(config).map((entry) => ({ label: entry.name, value: entry.id })),
+    [config],
   );
   const fieldColumns = width >= 92 ? 3 : 2;
   const commonColumns = width >= 78 ? 3 : 2;

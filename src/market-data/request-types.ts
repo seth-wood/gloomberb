@@ -14,6 +14,7 @@ export interface InstrumentRef {
 
 export interface TickerInstrumentOptions {
   portfolioId?: string | null;
+  portfolioIds?: readonly string[];
 }
 
 type ChartGranularity = "range" | "detail" | "resolution";
@@ -38,6 +39,12 @@ export interface SecFilingsRequest {
   count?: number;
 }
 
+function scopedPortfolioIds(options: TickerInstrumentOptions): string[] {
+  if (options.portfolioIds?.length) return [...options.portfolioIds];
+  if (options.portfolioId) return [options.portfolioId];
+  return [];
+}
+
 function brokerContractForTicker(
   ticker: TickerRecord | null | undefined,
   options: TickerInstrumentOptions = {},
@@ -45,9 +52,10 @@ function brokerContractForTicker(
   const contracts = ticker?.metadata.broker_contracts ?? [];
   if (contracts.length === 0) return null;
 
-  const portfolioId = options.portfolioId;
-  if (portfolioId) {
-    const positions = ticker?.metadata.positions.filter((position) => position.portfolio === portfolioId) ?? [];
+  const portfolioIds = scopedPortfolioIds(options);
+  if (portfolioIds.length > 0) {
+    const portfolioIdSet = new Set(portfolioIds);
+    const positions = ticker?.metadata.positions.filter((position) => portfolioIdSet.has(position.portfolio)) ?? [];
     for (const position of positions) {
       const matchingContract = contracts.find((contract) => (
         (position.brokerContractId == null || contract.conId === position.brokerContractId)

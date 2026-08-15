@@ -81,6 +81,71 @@ describe("quoteSubscriptionTargetFromTicker", () => {
     });
   });
 
+  test("scopes broker contracts to member portfolios on combined tabs", () => {
+    const ticker = makeTicker({
+      ticker: "VICR",
+      portfolios: [
+        "broker:ibkr-live:DU111",
+        "broker:ibkr-coldstart:DU222",
+      ],
+      positions: [
+        {
+          portfolio: "broker:ibkr-live:DU111",
+          shares: 170,
+          avgCost: 198,
+          currency: "USD",
+          broker: "ibkr",
+          brokerInstanceId: "ibkr-live",
+          brokerContractId: 275759,
+        },
+        {
+          portfolio: "broker:ibkr-coldstart:DU222",
+          shares: 350,
+          avgCost: 290,
+          currency: "USD",
+          broker: "ibkr",
+          brokerInstanceId: "ibkr-coldstart",
+          brokerContractId: 275759,
+        },
+      ],
+      broker_contracts: [
+        {
+          brokerId: "ibkr",
+          brokerInstanceId: "ibkr-live",
+          conId: 275759,
+          symbol: "VICR",
+          localSymbol: "VICR",
+          exchange: "NASDAQ",
+          currency: "USD",
+          secType: "STK",
+        },
+        {
+          brokerId: "ibkr",
+          brokerInstanceId: "ibkr-coldstart",
+          conId: 275759,
+          symbol: "VICR",
+          localSymbol: "VICR",
+          exchange: "NASDAQ",
+          currency: "USD",
+          secType: "STK",
+        },
+      ],
+    });
+
+    expect(instrumentFromTicker(ticker, "VICR", {
+      portfolioIds: ["broker:ibkr-coldstart:DU222"],
+    })).toMatchObject({
+      brokerInstanceId: "ibkr-coldstart",
+      instrument: ticker.metadata.broker_contracts?.[1],
+    });
+    expect(instrumentFromTicker(ticker, "VICR", {
+      portfolioId: "broker:combined:ignored",
+    })).toMatchObject({
+      brokerInstanceId: "ibkr-live",
+      instrument: ticker.metadata.broker_contracts?.[0],
+    });
+  });
+
   test("preserves broker contract context for streaming targets", () => {
     const ticker = makeTicker({
       broker_contracts: [{

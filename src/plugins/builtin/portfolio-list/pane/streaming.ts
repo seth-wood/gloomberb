@@ -24,7 +24,7 @@ import {
 
 export function usePortfolioPaneStreaming({
   appActive,
-  activeCollectionId,
+  portfolioIds,
   sortedTickers,
   cursorSymbol,
   streamWindow,
@@ -35,7 +35,7 @@ export function usePortfolioPaneStreaming({
   liveStreaming,
 }: {
   appActive: boolean;
-  activeCollectionId?: string;
+  portfolioIds?: readonly string[];
   sortedTickers: TickerRecord[];
   cursorSymbol: string | null;
   streamWindow: { start: number; end: number };
@@ -66,8 +66,8 @@ export function usePortfolioPaneStreaming({
   );
   const streamSurface: "portfolio" | "watchlist" = isPortfolioTab ? "portfolio" : "watchlist";
   const instrumentOptions = useMemo(() => ({
-    portfolioId: isPortfolioTab ? activeCollectionId : undefined,
-  }), [activeCollectionId, isPortfolioTab]);
+    portfolioIds: isPortfolioTab && portfolioIds?.length ? portfolioIds : undefined,
+  }), [isPortfolioTab, portfolioIds]);
   const streamTargets = useMemo(() => (
     sortedTickers
       .map((ticker) => {

@@ -3,6 +3,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { convertCurrency } from "../../../utils/format";
+import { isPortfolioCollectionId } from "../../../utils/broker-collections";
 import { getCollectionTypeFromConfig } from "../portfolio-list/pane/data";
 import { getPortfolioPositionMetrics, resolveBrokerFallbackMarketValue } from "../portfolio-list/position-metrics";
 
@@ -47,7 +48,7 @@ export function resolveActivePortfolioId({
   ticker: TickerRecord | null;
   config: AppConfig;
 }): string | null {
-  if (requestedPortfolioId && config.portfolios.some((portfolio) => portfolio.id === requestedPortfolioId)) {
+  if (requestedPortfolioId && isPortfolioCollectionId(config, requestedPortfolioId)) {
     return requestedPortfolioId;
   }
   if (activeCollectionId && getCollectionTypeFromConfig(config, activeCollectionId) === "portfolio") {
