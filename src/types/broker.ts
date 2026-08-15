@@ -79,6 +79,12 @@ export interface BrokerProfileAction {
   disabledReason?: string;
 }
 
+export interface BrokerSetupGuide {
+  intro: string;
+  steps: string[];
+  docsUrl?: string;
+}
+
 export interface BrokerAdapter {
   readonly id: string;
   readonly name: string;
@@ -94,6 +100,9 @@ export interface BrokerAdapter {
   getPersistedConfigUpdate?(instance: BrokerInstanceConfig): Record<string, unknown> | null | Promise<Record<string, unknown> | null>;
   getAccountCacheSourceKey?(instance: BrokerInstanceConfig): string;
   getAccountCachePolicy?(instance: BrokerInstanceConfig): CachePolicy;
+  /** Identity of the live auth session. Changing it should drop the current connection. */
+  getSessionKey?(instance: BrokerInstanceConfig): string;
+  getSetupGuide?(values?: Record<string, unknown>): BrokerSetupGuide | null;
   getProfileActions?(instance: BrokerInstanceConfig): BrokerProfileAction[];
   toConfigValues?(instance: BrokerInstanceConfig): Record<string, unknown>;
   fromConfigValues?(values: Record<string, unknown>, previous?: BrokerInstanceConfig): Record<string, unknown>;

@@ -314,6 +314,7 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
             optionIdx={portfolioOptionIdx}
             onOptionSelect={setPortfolioOptionIdx}
             selectedBrokerId={selectedBrokerId}
+            adapter={brokerOptions.find((option) => option.id === selectedBrokerId)?.adapter ?? null}
             brokerFields={activeBrokerFields}
             brokerFieldIdx={brokerFieldIdx}
             brokerSelectIdx={brokerSelectIdx}

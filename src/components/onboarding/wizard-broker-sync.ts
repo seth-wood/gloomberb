@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { connectValidatedBroker } from "../../brokers/connect-broker";
 import { buildBrokerProfileConfig, validateBrokerProfileValues } from "../../brokers/profile-form";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
 import { saveConfig } from "../../data/config/store";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppConfig } from "../../types/config";
-import { createBrokerInstanceId } from "../../utils/broker-instances";
+import { createBrokerInstanceId, getBrokerInstance } from "../../utils/broker-instances";
 import { debugLog } from "../../utils/debug-log";
 import type { BrokerSyncSummary, PortfolioSub } from "./onboarding-steps";
 import type { BrokerOption } from "./wizard-model";
@@ -168,6 +169,15 @@ export function useOnboardingBrokerSync({
     try {
       const { config: draftConfig, instanceId } = buildDraftBrokerConfig(brokerValueOverrides);
       onboardingLog.info("Syncing broker during onboarding", { instanceId, brokerId: selectedBrokerId });
+      const instance = getBrokerInstance(draftConfig.brokerInstances, instanceId);
+      if (!instance) {
+        throw new Error("Broker profile not found.");
+      }
+      const broker = pluginRegistry.brokers.get(instance.brokerType);
+      if (!broker) {
+        throw new Error(`Broker "${instance.brokerType}" is not available.`);
+      }
+      await connectValidatedBroker(broker, instance);
       const result = await syncBrokerInstance({
         config: draftConfig,
         instanceId,

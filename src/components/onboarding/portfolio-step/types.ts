@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import type { InputRenderable } from "../../../ui";
-import type { BrokerConfigField } from "../../../types/broker";
+import type { BrokerAdapter, BrokerConfigField } from "../../../types/broker";
 import type { ListViewItem } from "../../ui";
 
 export type PortfolioSub = "choose" | "broker-setup" | "broker-fields" | "broker-sync";
@@ -11,6 +11,7 @@ export interface PortfolioStepProps {
   optionIdx: number;
   onOptionSelect: (idx: number) => void;
   selectedBrokerId: string | null;
+  adapter: BrokerAdapter | null;
   brokerFields: BrokerConfigField[];
   brokerFieldIdx: number;
   brokerSelectIdx: number;

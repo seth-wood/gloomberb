@@ -3,6 +3,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { AppAction, AppState } from "../../../state/app/context";
+import { connectValidatedBroker } from "../../../brokers/connect-broker";
 import {
   buildBrokerProfileConfig,
   validateBrokerProfileValues,
@@ -85,6 +86,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
         adapter.name.trim(),
         brokerValues as Record<string, unknown>,
       );
+      await connectValidatedBroker(adapter, instance);
       await pluginRegistry.syncBrokerInstanceFn(instance.id);
       const freshConfig = pluginRegistry.getConfigFn();
       dispatch({ type: "SET_CONFIG", config: freshConfig });

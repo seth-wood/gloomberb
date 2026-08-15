@@ -3,6 +3,7 @@ import {
   clearPersistedBrokerAccounts,
   getBrokerAccountCacheSourceKey,
 } from "../../brokers/account-cache";
+import { connectValidatedBroker } from "../../brokers/connect-broker";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
@@ -131,10 +132,7 @@ export function bindPluginRegistryRuntimeAccess({
     const broker = pluginRegistry.brokers.get(instance.brokerType);
     if (!broker) throw new Error(`Broker "${instance.brokerType}" is not available.`);
 
-    const valid = await broker.validate(instance).catch(() => false);
-    if (!valid) throw new Error(`${broker.name} setup is incomplete.`);
-
-    await broker.connect?.(instance);
+    await connectValidatedBroker(broker, instance);
     if (broker.listAccounts) {
       const accounts = await broker.listAccounts(instance);
       dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts });
@@ -166,12 +164,19 @@ export function bindPluginRegistryRuntimeAccess({
     if (shouldClearBrokerAccounts) {
       clearPersistedBrokerAccounts(pluginRegistry.persistence.resources, currentInstance);
     }
+    const sessionChanged = broker?.getSessionKey
+      && currentInstance
+      && nextInstance
+      && broker.getSessionKey(currentInstance) !== broker.getSessionKey(nextInstance);
     const nextConfig = {
       ...state.config,
       brokerInstances: nextInstances,
     };
     dispatch({ type: "SET_CONFIG", config: nextConfig });
     await saveConfigImmediately(nextConfig);
+    if (sessionChanged && currentInstance) {
+      await broker?.disconnect?.(currentInstance).catch(() => {});
+    }
     pluginRegistry.events.emit("config:changed", { config: nextConfig });
   };
 
