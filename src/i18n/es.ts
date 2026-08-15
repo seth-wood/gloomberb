@@ -430,6 +430,7 @@ export const es: Record<string, string> = {
   "Lock this pane to Polymarket.": "Fijar este panel a Polymarket.",
   "Hide the top venue tabs and lock this pane to one scope.": "Ocultar las pestañas de plataformas y fijar el panel a un alcance.",
   "Interactive Brokers market data, account sync, and trading.": "Datos de mercado, sincronización de cuentas y trading de Interactive Brokers.",
+  "Charles Schwab account sync and portfolio tracking.": "Sincronización de cuentas y seguimiento de cartera de Charles Schwab.",
   "Free market, macro, and chat services. Chat requires signup.": "Servicios gratuitos de mercado, macro y chat. El chat requiere registro.",
 
   // ── Settings fields ──────────────────────────────────────────
@@ -609,6 +610,12 @@ export const es: Record<string, string> = {
   "   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)": "   Gloomberb puede autodetectar puertos API locales (4001, 4002, 7496, 7497)",
   "   Use Manual setup only if you need a custom host or exact socket port": "   Usa configuración manual solo si necesitas host o puerto específicos",
   "4. Keep it running while using Gloomberb": "4. Mantenlo en ejecución mientras usas Gloomberb",
+  "You'll need a Schwab developer app and OAuth login:": "Necesitarás una app de desarrollador de Schwab e inicio de sesión OAuth:",
+  "1. Create an Individual Trader API app at the Schwab Developer Portal": "1. Crea una app Individual Trader API en el portal de desarrolladores de Schwab",
+  "2. Set the callback URL to https://127.0.0.1:8182 (must match exactly)": "2. Configura la URL de callback a https://127.0.0.1:8182 (debe coincidir exactamente)",
+  "3. Copy the App Key and App Secret into your broker profile": "3. Copia el App Key y el App Secret en tu perfil de bróker",
+  "4. Connect — Gloomberb opens Schwab in your browser. Continue past the 127.0.0.1 certificate warning if shown": "4. Conecta — Gloomberb abre Schwab en tu navegador. Continúa si aparece la advertencia de certificado de 127.0.0.1",
+  "5. Every 7 days Schwab requires another browser sign-in (password/MFA). Gloomberb will reopen the login": "5. Cada 7 días Schwab exige otro inicio de sesión en el navegador (contraseña/MFA). Gloomberb volverá a abrir el login",
   "You'll need your {broker} API credentials.": "Necesitarás tus credenciales de API de {broker}.",
   "Connecting to {broker} and importing accounts and positions...": "Conectando con {broker} e importando cuentas y posiciones...",
   "Unable to sync {broker}.": "No se pudo sincronizar {broker}.",

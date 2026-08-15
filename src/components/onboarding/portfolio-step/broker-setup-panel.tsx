@@ -1,6 +1,7 @@
-import { Box, Span, Strong, Text, TextAttributes, Underline } from "../../../ui";
+import { Box, Text, TextAttributes } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
+import type { BrokerAdapter } from "../../../types/broker";
 import { ExternalLink, type ListViewItem } from "../../ui";
 import { getBrokerLabel } from "./utils";
 
@@ -8,14 +9,15 @@ export function BrokerSetupPanel({
   choices,
   selectedBrokerId,
   brokerValues,
+  adapter,
 }: {
   choices: ListViewItem[];
   selectedBrokerId: string;
   brokerValues: Record<string, Record<string, string>>;
+  adapter: BrokerAdapter | null;
 }) {
   const brokerLabel = getBrokerLabel(choices, selectedBrokerId);
-  const connectionMode = brokerValues[selectedBrokerId]?.connectionMode;
-  const isGateway = connectionMode === "gateway";
+  const guide = adapter?.getSetupGuide?.(brokerValues[selectedBrokerId] ?? {}) ?? null;
 
   return (
     <Box flexDirection="column" paddingX={2}>
@@ -26,62 +28,25 @@ export function BrokerSetupPanel({
       </Box>
       <Box height={1} />
 
-      {selectedBrokerId === "ibkr" && !isGateway && (
+      {guide ? (
         <>
           <Box height={1}>
-            <Text fg={colors.textDim}>{t("You'll need 2 things from IBKR Account Management:")}</Text>
+            <Text fg={colors.textDim}>{guide.intro}</Text>
           </Box>
           <Box height={2} />
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("1. Go to ")}<Underline><Span fg={colors.text}>{t("Reports > Flex Queries")}</Span></Underline></Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("2. Create a Flex Query that includes positions data")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("3. Note the ")}<Strong><Span fg={colors.text}>{t("Query ID")}</Span></Strong>{t(" (numeric)")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("4. Under ")}<Underline><Span fg={colors.text}>{t("Reports > Settings")}</Span></Underline>{t(", generate a ")}<Strong><Span fg={colors.text}>{t("Flex Web Service Token")}</Span></Strong></Text>
-          </Box>
-          <Box height={2} />
-          <ExternalLink url="https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm" />
+          {guide.steps.map((step) => (
+            <Box height={1} key={step}>
+              <Text fg={colors.textDim}>{step}</Text>
+            </Box>
+          ))}
+          {guide.docsUrl ? (
+            <>
+              <Box height={2} />
+              <ExternalLink url={guide.docsUrl} />
+            </>
+          ) : null}
         </>
-      )}
-
-      {selectedBrokerId === "ibkr" && isGateway && (
-        <>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("You'll need IB Gateway or TWS running locally:")}</Text>
-          </Box>
-          <Box height={2} />
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("1. Download and install ")}<Strong><Span fg={colors.text}>{t("IB Gateway")}</Span></Strong>{t(" (or use TWS)")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("2. Log in with your IBKR credentials")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("3. In ")}<Underline><Span fg={colors.text}>{t("Configuration > API > Settings")}</Span></Underline>{":"}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("   Enable \"ActiveX and Socket Clients\"")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("   Use Manual setup only if you need a custom host or exact socket port")}</Text>
-          </Box>
-          <Box height={1}>
-            <Text fg={colors.textDim}>{t("4. Keep it running while using Gloomberb")}</Text>
-          </Box>
-          <Box height={2} />
-          <ExternalLink url="https://www.interactivebrokers.com/en/trading/ibgateway-stable.php" />
-        </>
-      )}
-
-      {selectedBrokerId !== "ibkr" && (
+      ) : (
         <>
           <Box height={1}>
             <Text fg={colors.textDim}>{tf("You'll need your {broker} API credentials.", { broker: brokerLabel })}</Text>

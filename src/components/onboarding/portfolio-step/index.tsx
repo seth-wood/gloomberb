@@ -23,6 +23,7 @@ export function PortfolioStep(props: PortfolioStepProps) {
         choices={props.choices}
         selectedBrokerId={props.selectedBrokerId}
         brokerValues={props.brokerValues}
+        adapter={props.adapter}
       />
     );
   }

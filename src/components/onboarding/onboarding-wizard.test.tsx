@@ -151,11 +151,15 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
     const importDeferred = createDeferred<any[]>();
     const tickerRepository = createTickerRepository();
+    const connectedInstanceIds: string[] = [];
     const broker: BrokerAdapter = {
       id: "demo",
       name: "Demo Broker",
       configSchema: [{ key: "host", label: "Host", type: "text", required: true, defaultValue: "paper" }],
       validate: async () => true,
+      connect: async (instance) => {
+        connectedInstanceIds.push(instance.id);
+      },
       listAccounts: async () => [{ accountId: "ACC-1", name: "Primary", currency: "USD" }],
       importPositions: async () => importDeferred.promise,
     };
@@ -201,6 +205,7 @@ describe("OnboardingWizard", () => {
       frame = testSetup.captureCharFrame();
     }
     expect(frame).toContain("Connecting to Demo Broker and importing");
+    expect(connectedInstanceIds).toHaveLength(1);
     expect(completedConfig).toBeNull();
 
     importDeferred.resolve([{

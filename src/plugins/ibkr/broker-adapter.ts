@@ -1,4 +1,5 @@
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
+import { t } from "../../i18n";
 import {
   buildPersistedIbkrGatewayConfig,
   buildIbkrConfigFromValues,
@@ -23,6 +24,34 @@ export const ibkrBroker: BrokerAdapter = {
   id: "ibkr",
   name: "Interactive Brokers",
   configSchema: IBKR_CONFIG_FIELDS,
+
+  getSetupGuide(values) {
+    if (values?.connectionMode === "gateway") {
+      return {
+        intro: t("You'll need IB Gateway or TWS running locally:"),
+        steps: [
+          `${t("1. Download and install ")}${t("IB Gateway")}${t(" (or use TWS)")}`,
+          t("2. Log in with your IBKR credentials"),
+          `${t("3. In ")}${t("Configuration > API > Settings")}:`,
+          t("   Enable \"ActiveX and Socket Clients\""),
+          t("   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)"),
+          t("   Use Manual setup only if you need a custom host or exact socket port"),
+          t("4. Keep it running while using Gloomberb"),
+        ],
+        docsUrl: "https://www.interactivebrokers.com/en/trading/ibgateway-stable.php",
+      };
+    }
+    return {
+      intro: t("You'll need 2 things from IBKR Account Management:"),
+      steps: [
+        `${t("1. Go to ")}${t("Reports > Flex Queries")}`,
+        t("2. Create a Flex Query that includes positions data"),
+        `${t("3. Note the ")}${t("Query ID")}${t(" (numeric)")}`,
+        `${t("4. Under ")}${t("Reports > Settings")}${t(", generate a ")}${t("Flex Web Service Token")}`,
+      ],
+      docsUrl: "https://www.ibkrguides.com/orgportal/performanceandstatements/flex.htm",
+    };
+  },
 
   async validate(instance) {
     const normalized = normalizeIbkrConfig(instance.config);
