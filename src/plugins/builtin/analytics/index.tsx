@@ -16,7 +16,11 @@ import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { usePortfolioAccountState } from "../portfolio-list/header";
 import { getCollectionTickersFromConfig } from "../portfolio-list/pane/data";
 import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
-import { buildPortfolioCollectionEntries, resolveCollectionPortfolioIds } from "../../../utils/broker-collections";
+import {
+  buildPortfolioCollectionEntries,
+  resolveCollectionPortfolioIds,
+  resolvePortfolioCollection,
+} from "../../../utils/broker-collections";
 import {
   buildPerformanceChartPoints,
   useBrokerPortfolioPerformance,
@@ -46,7 +50,7 @@ import {
   type SectorSortPreference,
   type SectorTableRow,
 } from "./sector-model";
-import { resolveCollectionId, resolveTemplatePortfolioId, resolveActivePortfolio } from "./portfolio-selection";
+import { resolveCollectionId, resolveTemplatePortfolioId } from "./portfolio-selection";
 import {
   AnalyticsMetricsPanel,
   PortfolioHistorySection,
@@ -78,7 +82,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
 
   const activePortfolioId = resolveCollectionId(config, currentPortfolioId) ?? fallbackPortfolioId;
   const activePortfolio = useMemo(
-    () => resolveActivePortfolio(config, activePortfolioId),
+    () => (activePortfolioId ? resolvePortfolioCollection(config, activePortfolioId) : null),
     [activePortfolioId, config],
   );
   const activePortfolioIds = useMemo(

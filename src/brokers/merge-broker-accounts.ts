@@ -1,6 +1,6 @@
 import type { BrokerAccount, BrokerCashBalance } from "../types/trading";
 
-export function sumFiniteNumbers(values: Array<number | undefined>): number | undefined {
+function sumFiniteNumbers(values: Array<number | undefined>): number | undefined {
   const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   if (finite.length === 0) return undefined;
   return finite.reduce((sum, value) => sum + value, 0);

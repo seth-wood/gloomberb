@@ -67,19 +67,11 @@ export function getBrokerInstanceAccounts(config: AppConfig, instanceId: string)
   return { portfolioIds, accountIds };
 }
 
-export function getBrokerInstanceAccountPortfolioIds(config: AppConfig, instanceId: string): string[] {
-  return getBrokerInstanceAccounts(config, instanceId).portfolioIds;
-}
-
-export function getBrokerInstanceAccountIds(config: AppConfig, instanceId: string): string[] {
-  return getBrokerInstanceAccounts(config, instanceId).accountIds;
-}
-
 export function resolveCollectionPortfolioIds(config: AppConfig, collectionId: string): string[] {
   if (isBrokerCombinedPortfolioId(collectionId)) {
     const parsed = parseBrokerCollectionId(collectionId);
     if (!parsed) return [];
-    return getBrokerInstanceAccountPortfolioIds(config, parsed.instanceId);
+    return getBrokerInstanceAccounts(config, parsed.instanceId).portfolioIds;
   }
   return [collectionId];
 }

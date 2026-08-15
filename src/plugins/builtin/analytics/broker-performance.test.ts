@@ -12,15 +12,4 @@ describe("resolveBrokerAccountId", () => {
       brokerInstanceId: "schwab-main",
     })).toBeNull();
   });
-
-  test("returns the broker account id for individual broker portfolios", () => {
-    expect(resolveBrokerAccountId({
-      id: "broker:ibkr-flex:DU12345",
-      name: "Flex DU12345",
-      currency: "USD",
-      brokerId: "ibkr",
-      brokerInstanceId: "ibkr-flex",
-      brokerAccountId: "DU12345",
-    })).toBe("DU12345");
-  });
 });

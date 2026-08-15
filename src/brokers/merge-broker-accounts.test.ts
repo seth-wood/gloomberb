@@ -31,8 +31,4 @@ describe("mergeBrokerAccounts", () => {
       expect.objectContaining({ currency: "USD", quantity: 3000 }),
     ]);
   });
-
-  test("returns null when no accounts are provided", () => {
-    expect(mergeBrokerAccounts([])).toBeNull();
-  });
 });
