@@ -2,6 +2,11 @@ import type { PaneSettingOption, PaneSettingsDef, PaneTemplateContext } from "..
 import { DEFAULT_COLUMNS, DEFAULT_PORTFOLIO_COLUMN_IDS, type AppConfig, type ColumnConfig } from "../../../types/config";
 import { PRICE_SPARKLINE_COLUMN_ID, PRICE_SPARKLINE_PERIOD_LABEL } from "../../../components/price-sparkline/view";
 import { t } from "../../../i18n";
+import {
+  buildBrokerCombinedPortfolioId,
+  isPortfolioCollectionId,
+} from "../../../utils/broker-collections";
+import { getBrokerInstance } from "../../../utils/broker-instances";
 
 type CollectionScope = "all" | "portfolios" | "watchlists" | "custom";
 export type PortfolioViewMode = "table" | "grid";
@@ -178,13 +183,61 @@ export function cleanPortfolioPaneSettings(settings: Record<string, unknown>): R
   return nextSettings;
 }
 
-export function getCollectionEntries(config: AppConfig): CollectionEntry[] {
-  return [
-    ...config.portfolios.map((portfolio) => ({
+export function buildPortfolioCollectionEntries(config: AppConfig): CollectionEntry[] {
+  const manualEntries: CollectionEntry[] = [];
+  const instanceAccountEntries = new Map<string, CollectionEntry[]>();
+  const instanceAccountCounts = new Map<string, number>();
+
+  for (const portfolio of config.portfolios) {
+    if (portfolio.brokerInstanceId && portfolio.brokerAccountId) {
+      instanceAccountCounts.set(
+        portfolio.brokerInstanceId,
+        (instanceAccountCounts.get(portfolio.brokerInstanceId) ?? 0) + 1,
+      );
+      const entries = instanceAccountEntries.get(portfolio.brokerInstanceId) ?? [];
+      entries.push({
+        id: portfolio.id,
+        name: portfolio.name,
+        kind: "portfolio",
+      });
+      instanceAccountEntries.set(portfolio.brokerInstanceId, entries);
+      continue;
+    }
+
+    manualEntries.push({
       id: portfolio.id,
       name: portfolio.name,
-      kind: "portfolio" as const,
-    })),
+      kind: "portfolio",
+    });
+  }
+
+  const brokerEntries: CollectionEntry[] = [];
+  const insertedCombined = new Set<string>();
+
+  for (const portfolio of config.portfolios) {
+    const instanceId = portfolio.brokerInstanceId;
+    if (!instanceId || !portfolio.brokerAccountId) continue;
+    if (insertedCombined.has(instanceId)) continue;
+    insertedCombined.add(instanceId);
+
+    const accountCount = instanceAccountCounts.get(instanceId) ?? 0;
+    if (accountCount >= 2) {
+      const instance = getBrokerInstance(config.brokerInstances, instanceId);
+      brokerEntries.push({
+        id: buildBrokerCombinedPortfolioId(instanceId),
+        name: instance?.label ?? instanceId,
+        kind: "portfolio",
+      });
+    }
+    brokerEntries.push(...(instanceAccountEntries.get(instanceId) ?? []));
+  }
+
+  return [...manualEntries, ...brokerEntries];
+}
+
+export function getCollectionEntries(config: AppConfig): CollectionEntry[] {
+  return [
+    ...buildPortfolioCollectionEntries(config),
     ...config.watchlists.map((watchlist) => ({
       id: watchlist.id,
       name: watchlist.name,
@@ -310,9 +363,10 @@ export function buildPortfolioPaneSettingsDef(
 
 export function resolveCollectionPaneId(context: PaneTemplateContext): string | null {
   if (context.activeCollectionId) {
-    const isPortfolio = context.config.portfolios.some((portfolio) => portfolio.id === context.activeCollectionId);
-    const isWatchlist = context.config.watchlists.some((watchlist) => watchlist.id === context.activeCollectionId);
-    if (isPortfolio || isWatchlist) {
+    if (isPortfolioCollectionId(context.config, context.activeCollectionId)) {
+      return context.activeCollectionId;
+    }
+    if (context.config.watchlists.some((watchlist) => watchlist.id === context.activeCollectionId)) {
       return context.activeCollectionId;
     }
   }

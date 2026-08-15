@@ -144,6 +144,7 @@ export function computeSectorAllocation(
     .sort((a, b) => b.weight - a.weight || a.sector.localeCompare(b.sector));
 }
 
-export function hasPortfolioPosition(ticker: TickerRecord, portfolioId: string): boolean {
-  return ticker.metadata.positions.some((position) => position.portfolio === portfolioId);
+export function hasPortfolioPosition(ticker: TickerRecord, portfolioScope: string | readonly string[]): boolean {
+  const portfolioIds = typeof portfolioScope === "string" ? [portfolioScope] : portfolioScope;
+  return ticker.metadata.positions.some((position) => portfolioIds.includes(position.portfolio));
 }

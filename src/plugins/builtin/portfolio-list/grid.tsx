@@ -38,7 +38,7 @@ function positionAdjustedChangePercent(
 ): number | null {
   const changePercent = numericValue(getSortValue(CHANGE_PCT_COLUMN, ticker, financials, context));
   if (changePercent == null || !isPortfolioTab) return changePercent;
-  const positionMetrics = getPortfolioPositionMetrics(ticker, context.activeTab, quoteCurrency(ticker, financials));
+  const positionMetrics = getPortfolioPositionMetrics(ticker, context.activePortfolioIds, quoteCurrency(ticker, financials));
   return positionMetrics.totalPriceUnits < 0 ? -changePercent : changePercent;
 }
 

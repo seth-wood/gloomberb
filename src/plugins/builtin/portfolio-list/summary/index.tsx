@@ -1,6 +1,7 @@
 import { Box, Text } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { colors, priceColor } from "../../../../theme/colors";
+import type { AppConfig } from "../../../../types/config";
 import type { AppState } from "../../../../state/app/context";
 import type { PaneFooterSegment } from "../../../../components/layout/pane/footer/model";
 import type { BrokerConnectionStatus } from "../../../../types/broker";
@@ -9,6 +10,10 @@ import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
 import { displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
+import {
+  getBrokerInstanceAccountIds,
+  isBrokerCombinedPortfolioId,
+} from "../../../../utils/broker-collections";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../account-metrics";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
@@ -116,6 +121,56 @@ function getVisibleCashBalances(cashBalances: BrokerCashBalance[] | undefined): 
     });
 }
 
+function sumFiniteNumbers(values: Array<number | undefined>): number | undefined {
+  const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (finite.length === 0) return undefined;
+  return finite.reduce((sum, value) => sum + value, 0);
+}
+
+function mergeBrokerAccounts(accounts: BrokerAccount[]): BrokerAccount | null {
+  if (accounts.length === 0) return null;
+
+  const currency = accounts.find((account) => account.currency)?.currency;
+  const cashByCurrency = new Map<string, BrokerCashBalance>();
+  for (const account of accounts) {
+    for (const balance of account.cashBalances ?? []) {
+      const existing = cashByCurrency.get(balance.currency);
+      cashByCurrency.set(balance.currency, {
+        currency: balance.currency,
+        quantity: (existing?.quantity ?? 0) + balance.quantity,
+        baseValue: existing?.baseValue != null || balance.baseValue != null
+          ? (existing?.baseValue ?? 0) + (balance.baseValue ?? 0)
+          : undefined,
+        baseCurrency: balance.baseCurrency ?? existing?.baseCurrency ?? currency,
+      });
+    }
+  }
+
+  const updatedAt = Math.max(...accounts.map((account) => account.updatedAt ?? 0));
+  const hasFlexSource = accounts.some((account) => account.source === "flex");
+
+  return {
+    accountId: "combined",
+    name: "Combined",
+    currency,
+    source: hasFlexSource ? "flex" : accounts[0]?.source,
+    updatedAt,
+    netLiquidation: sumFiniteNumbers(accounts.map((account) => account.netLiquidation)),
+    grossPositionValue: sumFiniteNumbers(accounts.map((account) => account.grossPositionValue)),
+    totalCashValue: sumFiniteNumbers(accounts.map((account) => account.totalCashValue)),
+    settledCash: sumFiniteNumbers(accounts.map((account) => account.settledCash)),
+    buyingPower: sumFiniteNumbers(accounts.map((account) => account.buyingPower)),
+    availableFunds: sumFiniteNumbers(accounts.map((account) => account.availableFunds)),
+    excessLiquidity: sumFiniteNumbers(accounts.map((account) => account.excessLiquidity)),
+    initMarginReq: sumFiniteNumbers(accounts.map((account) => account.initMarginReq)),
+    maintMarginReq: sumFiniteNumbers(accounts.map((account) => account.maintMarginReq)),
+    dailyPnl: sumFiniteNumbers(accounts.map((account) => account.dailyPnl)),
+    unrealizedPnl: sumFiniteNumbers(accounts.map((account) => account.unrealizedPnl)),
+    realizedPnl: sumFiniteNumbers(accounts.map((account) => account.realizedPnl)),
+    cashBalances: cashByCurrency.size > 0 ? [...cashByCurrency.values()] : undefined,
+  };
+}
+
 function findPortfolioAccount(
   accounts: BrokerAccount[],
   portfolio: Portfolio,
@@ -143,6 +198,38 @@ function sortAccountsByFreshness(accounts: BrokerAccount[]): BrokerAccount[] {
   return [...accounts].sort((left, right) => getAccountFreshnessTime(right) - getAccountFreshnessTime(left));
 }
 
+function resolveCombinedPortfolioAccountState(
+  portfolio: Portfolio,
+  state: Pick<AppState, "config" | "brokerAccounts">,
+  liveSnapshot: LiveBrokerAccountSnapshot,
+  brokerInstance: ReturnType<typeof getBrokerInstance>,
+): ResolvedPortfolioAccountState | null {
+  const instanceId = portfolio.brokerInstanceId;
+  if (!instanceId) return null;
+
+  const accountIds = getBrokerInstanceAccountIds(state.config, instanceId);
+  const cachedAccounts = sortAccountsByFreshness(
+    (state.brokerAccounts[instanceId] ?? []).filter((account) => accountIds.includes(account.accountId)),
+  );
+
+  const liveAccounts = brokerInstance
+    && liveSnapshot.status?.state === "connected"
+    ? liveSnapshot.accounts.filter((account) => accountIds.includes(account.accountId))
+    : [];
+
+  const accounts = liveAccounts.length > 0 ? liveAccounts : cachedAccounts;
+  const account = mergeBrokerAccounts(accounts);
+  if (!account) return null;
+
+  const source = formatSourceBadge(account, liveAccounts.length > 0);
+  return {
+    account,
+    sourceLabel: source.label,
+    sourceKind: source.kind,
+    visibleCashBalances: getVisibleCashBalances(account.cashBalances),
+  };
+}
+
 export function resolvePortfolioAccountState(
   portfolio: Portfolio | null,
   state: Pick<AppState, "config" | "brokerAccounts">,
@@ -151,6 +238,9 @@ export function resolvePortfolioAccountState(
   if (!portfolio?.brokerInstanceId) return null;
 
   const brokerInstance = getBrokerInstance(state.config.brokerInstances, portfolio.brokerInstanceId);
+  if (isBrokerCombinedPortfolioId(portfolio.id)) {
+    return resolveCombinedPortfolioAccountState(portfolio, state, liveSnapshot, brokerInstance);
+  }
   const relatedInstanceIds = [
     portfolio.brokerInstanceId,
     ...state.config.brokerInstances
@@ -297,6 +387,7 @@ export function buildPortfolioFooterSegments({
   refreshingSize,
   sortedTickers,
   width,
+  config,
 }: {
   accountState: PortfolioSummaryAccountState | null;
   accountStatusText?: string;
@@ -309,6 +400,7 @@ export function buildPortfolioFooterSegments({
   refreshingSize: number;
   sortedTickers: TickerRecord[];
   width: number;
+  config?: AppConfig;
 }): PaneFooterSegment[] {
   if (hideHeader) return [];
 
@@ -327,6 +419,7 @@ export function buildPortfolioFooterSegments({
     exchangeRates,
     isPortfolioTab,
     activeCollectionId,
+    config,
   );
 
   if (!isPortfolioTab) {

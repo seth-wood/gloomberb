@@ -181,4 +181,69 @@ describe("resolvePortfolioAccountState", () => {
     expect(accountState?.sourceLabel).toBe("Flex Jun 16");
   });
 
+  test("sums cached accounts for a combined broker portfolio tab", () => {
+    const accountState = resolvePortfolioAccountState({
+      id: "broker:schwab-main:combined",
+      name: "Schwab",
+      currency: "USD",
+      brokerId: "schwab",
+      brokerInstanceId: "schwab-main",
+    }, {
+      config: {
+        brokerInstances: [{
+          id: "schwab-main",
+          label: "Schwab",
+          brokerType: "schwab",
+          enabled: true,
+          config: {},
+        }],
+        portfolios: [
+          {
+            id: "broker:schwab-main:HASH1",
+            name: "****1111",
+            currency: "USD",
+            brokerId: "schwab",
+            brokerInstanceId: "schwab-main",
+            brokerAccountId: "HASH1",
+          },
+          {
+            id: "broker:schwab-main:HASH2",
+            name: "****2222",
+            currency: "USD",
+            brokerId: "schwab",
+            brokerInstanceId: "schwab-main",
+            brokerAccountId: "HASH2",
+          },
+        ],
+      } as any,
+      brokerAccounts: {
+        "schwab-main": [
+          {
+            accountId: "HASH1",
+            name: "****1111",
+            currency: "USD",
+            netLiquidation: 10000,
+            totalCashValue: 1000,
+            buyingPower: 5000,
+          },
+          {
+            accountId: "HASH2",
+            name: "****2222",
+            currency: "USD",
+            netLiquidation: 20000,
+            totalCashValue: 2000,
+            buyingPower: 8000,
+          },
+        ],
+      },
+    }, {
+      status: null,
+      accounts: [],
+    });
+
+    expect(accountState?.account.netLiquidation).toBe(30000);
+    expect(accountState?.account.totalCashValue).toBe(3000);
+    expect(accountState?.account.buyingPower).toBe(13000);
+  });
+
 });

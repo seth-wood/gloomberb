@@ -48,12 +48,16 @@ function resolvePositionCostMultiplier(
 
 export function getPortfolioPositionMetrics(
   ticker: TickerRecord,
-  activeTab: string | undefined,
+  portfolioScope: string | readonly string[] | undefined,
   fallbackCurrency: string,
 ): PortfolioPositionMetrics {
-  const tabPositions = activeTab
-    ? ticker.metadata.positions.filter((position) => position.portfolio === activeTab)
-    : ticker.metadata.positions;
+  const tabPositions = portfolioScope == null
+    ? ticker.metadata.positions
+    : ticker.metadata.positions.filter((position) => (
+      typeof portfolioScope === "string"
+        ? position.portfolio === portfolioScope
+        : portfolioScope.includes(position.portfolio)
+    ));
   const positionCurrency = getPositionCurrency(tabPositions, fallbackCurrency);
   let totalShares = 0;
   let totalCost = 0;

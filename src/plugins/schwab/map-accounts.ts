@@ -5,20 +5,40 @@ import type {
   SchwabAccountPayload,
   SchwabPosition,
   SchwabSecuritiesAccount,
+  SchwabUserPreferenceAccount,
 } from "./types";
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function findPreferenceAccount(
+  hash: string,
+  preferences: SchwabUserPreferenceAccount[],
+): SchwabUserPreferenceAccount | undefined {
+  return preferences.find((entry) => entry.hashValue === hash || entry.accountNumber === hash);
+}
+
 function accountDisplayName(
   account: SchwabSecuritiesAccount,
   accountNumbers: SchwabAccountNumber[],
+  userPreferences: SchwabUserPreferenceAccount[],
 ): string {
   const hash = account.accountNumber ?? "";
   const match = accountNumbers.find((entry) => entry.hashValue === hash);
-  if (match?.accountNumber) return match.accountNumber;
-  if (account.type) return account.type;
+  if (match?.accountNumber?.trim()) return match.accountNumber.trim();
+
+  const preference = findPreferenceAccount(hash, userPreferences);
+  const nickname = preference?.nickname?.trim();
+  if (nickname) return nickname;
+  const displayAcctId = preference?.displayAcctId?.trim();
+  if (displayAcctId) return displayAcctId;
+
+  const accountType = account.type?.trim();
+  if (accountType) {
+    const shortHash = hash.length >= 4 ? hash.slice(-4) : hash;
+    return shortHash ? `${accountType} • ${shortHash}` : accountType;
+  }
   return hash || "Schwab Account";
 }
 
@@ -71,6 +91,7 @@ function mapPosition(accountId: string, position: SchwabPosition): BrokerPositio
 export function mapSchwabAccount(
   payload: SchwabAccountPayload,
   accountNumbers: SchwabAccountNumber[],
+  userPreferences: SchwabUserPreferenceAccount[],
   updatedAt: number,
 ): { account: BrokerAccount; positions: BrokerPosition[] } | null {
   const securitiesAccount = payload.securitiesAccount;
@@ -85,7 +106,7 @@ export function mapSchwabAccount(
   return {
     account: {
       accountId,
-      name: accountDisplayName(securitiesAccount, accountNumbers),
+      name: accountDisplayName(securitiesAccount, accountNumbers, userPreferences),
       currency: "USD",
       updatedAt,
       netLiquidation: asNumber(balances?.liquidationValue) ?? asNumber(balances?.equity),
@@ -105,9 +126,10 @@ export function mapSchwabPortfolioSnapshot(
   accounts: SchwabAccountPayload[],
   accountNumbers: SchwabAccountNumber[],
   updatedAt = Date.now(),
+  userPreferences: SchwabUserPreferenceAccount[] = [],
 ): { accounts: BrokerAccount[]; positions: BrokerPosition[] } {
   const mapped = accounts
-    .map((payload) => mapSchwabAccount(payload, accountNumbers, updatedAt))
+    .map((payload) => mapSchwabAccount(payload, accountNumbers, userPreferences, updatedAt))
     .filter((entry): entry is NonNullable<typeof entry> => entry != null);
 
   return {

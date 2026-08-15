@@ -38,7 +38,7 @@ function buildCellVersion(
     objectVersion(ticker),
     objectVersion(financials),
     objectVersion(context.exchangeRates),
-    context.activeTab ?? "",
+    context.activePortfolioIds?.join(",") ?? "",
     context.baseCurrency,
     context.portfolioTotalMarketValue ?? 0,
     context.supplementalVersion ?? 0,

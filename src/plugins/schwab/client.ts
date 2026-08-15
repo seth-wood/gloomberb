@@ -23,6 +23,8 @@ import {
   type SchwabAccountNumber,
   type SchwabAccountPayload,
   type SchwabTokenState,
+  type SchwabUserPreference,
+  type SchwabUserPreferenceAccount,
 } from "./types";
 
 const schwabClient = createThrottledFetch({
@@ -178,12 +180,22 @@ async function withSchwabAuthorizedRequest<T>(
   }
 }
 
+export async function fetchSchwabUserPreferenceAccounts(accessToken: string): Promise<SchwabUserPreferenceAccount[]> {
+  try {
+    const preference = await authorizedGet<SchwabUserPreference>(accessToken, "/userPreference");
+    return preference.accounts ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function importSchwabPortfolioSnapshot(instance: BrokerInstanceConfig) {
   return withSchwabAuthorizedRequest(instance, async (accessToken) => {
-    const [accountNumbers, accounts] = await Promise.all([
+    const [accountNumbers, accounts, userPreferences] = await Promise.all([
       fetchSchwabAccountNumbers(accessToken),
       fetchSchwabAccountsWithPositions(accessToken),
+      fetchSchwabUserPreferenceAccounts(accessToken),
     ]);
-    return mapSchwabPortfolioSnapshot(accounts, accountNumbers);
+    return mapSchwabPortfolioSnapshot(accounts, accountNumbers, Date.now(), userPreferences);
   });
 }

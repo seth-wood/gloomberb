@@ -53,7 +53,7 @@ function createFinancials(
 }
 
 const defaultColumnContext: ColumnContext = {
-  activeTab: "main",
+  activePortfolioIds: ["main"],
   baseCurrency: "USD",
   exchangeRates: new Map([["USD", 1]]),
   now: 1_700_000_010_000,

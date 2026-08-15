@@ -19,6 +19,18 @@ export interface SchwabAccountNumber {
   hashValue: string;
 }
 
+export interface SchwabUserPreferenceAccount {
+  accountNumber?: string;
+  hashValue?: string;
+  displayAcctId?: string;
+  nickname?: string;
+  accountType?: string;
+}
+
+export interface SchwabUserPreference {
+  accounts?: SchwabUserPreferenceAccount[];
+}
+
 export interface SchwabInstrument {
   assetType?: string;
   symbol?: string;

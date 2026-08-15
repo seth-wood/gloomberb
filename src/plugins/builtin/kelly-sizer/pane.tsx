@@ -194,8 +194,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       exchangeRates,
       true,
       activePortfolioId,
+      config,
     ),
-    [activePortfolioId, config.baseCurrency, exchangeRates, portfolioFinancials, portfolioTickers],
+    [activePortfolioId, config.baseCurrency, config, exchangeRates, portfolioFinancials, portfolioTickers],
   );
   const sourceBankroll = accountState?.account.netLiquidation
     ?? portfolioSummary.totalMktValue

@@ -18,6 +18,7 @@ import {
   type CollectionSortPreference,
 } from "../../../../state/app/context";
 import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
+import { resolveCollectionPortfolioIds, resolvePortfolioCollection } from "../../../../utils/broker-collections";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PaneProps } from "../../../../types/plugin";
 import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
@@ -100,10 +101,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const isPortfolioTab = getCollectionTypeFromConfig(config, activeCollectionId) === "portfolio";
   const activeCollectionEntry = visibleCollections.find((collection) => collection.id === activeCollectionId) ?? null;
   const currentPortfolio = useMemo(() => (
-    isPortfolioTab
-      ? config.portfolios.find((portfolio) => portfolio.id === activeCollectionId) ?? null
-      : null
-  ), [activeCollectionId, config.portfolios, isPortfolioTab]);
+    isPortfolioTab ? resolvePortfolioCollection(config, activeCollectionId) : null
+  ), [activeCollectionId, config, isPortfolioTab]);
+  const activePortfolioIds = useMemo(
+    () => (isPortfolioTab ? resolveCollectionPortfolioIds(config, activeCollectionId) : undefined),
+    [activeCollectionId, config, isPortfolioTab],
+  );
   const viewMode: PortfolioViewMode = isPortfolioTab ? paneSettings.viewMode : "table";
 
   const tickers = useMemo(
@@ -149,10 +152,11 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     effectiveExchangeRates,
     isPortfolioTab,
     activeCollectionId,
+    config,
   ), [activeCollectionId, config.baseCurrency, effectiveExchangeRates, financialsMap, isPortfolioTab, tickers]);
 
   const columnContext: ColumnContext = useMemo(() => ({
-    activeTab: isPortfolioTab ? activeCollectionId : undefined,
+    activePortfolioIds: isPortfolioTab ? activePortfolioIds : undefined,
     baseCurrency: config.baseCurrency,
     exchangeRates: effectiveExchangeRates,
     now,
@@ -162,7 +166,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     corporateActions: supplementalData.corporateActions,
     earningsEvents: supplementalData.earningsEvents,
   }), [
-    activeCollectionId,
+    activePortfolioIds,
     config.baseCurrency,
     effectiveExchangeRates,
     isPortfolioTab,
@@ -357,6 +361,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     refreshingSize,
     sortedTickers,
     width,
+    config,
   }), [
     accountState,
     activeCollectionId,
