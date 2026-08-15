@@ -9,6 +9,8 @@ import type { Portfolio, TickerRecord } from "../../../../types/ticker";
 import type { BrokerAccount, BrokerCashBalance } from "../../../../types/trading";
 import { displayWidth, formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { getBrokerInstance } from "../../../../utils/broker-instances";
+import { getBrokerInstanceAccounts, isBrokerCombinedPortfolioId } from "../../../../utils/broker-collections";
+import { mergeBrokerAccounts } from "../../../../brokers/merge-broker-accounts";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../account-metrics";
 import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "./totals";
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
@@ -143,6 +145,38 @@ function sortAccountsByFreshness(accounts: BrokerAccount[]): BrokerAccount[] {
   return [...accounts].sort((left, right) => getAccountFreshnessTime(right) - getAccountFreshnessTime(left));
 }
 
+function resolveCombinedPortfolioAccountState(
+  portfolio: Portfolio,
+  state: Pick<AppState, "config" | "brokerAccounts">,
+  liveSnapshot: LiveBrokerAccountSnapshot,
+  brokerInstance: ReturnType<typeof getBrokerInstance>,
+): ResolvedPortfolioAccountState | null {
+  const instanceId = portfolio.brokerInstanceId;
+  if (!instanceId) return null;
+
+  const accountIds = getBrokerInstanceAccounts(state.config, instanceId).accountIds;
+  const cachedAccounts = sortAccountsByFreshness(
+    (state.brokerAccounts[instanceId] ?? []).filter((account) => accountIds.includes(account.accountId)),
+  );
+
+  const liveAccounts = brokerInstance
+    && liveSnapshot.status?.state === "connected"
+    ? liveSnapshot.accounts.filter((account) => accountIds.includes(account.accountId))
+    : [];
+
+  const accounts = liveAccounts.length > 0 ? liveAccounts : cachedAccounts;
+  const account = mergeBrokerAccounts(accounts);
+  if (!account) return null;
+
+  const source = formatSourceBadge(account, liveAccounts.length > 0);
+  return {
+    account,
+    sourceLabel: source.label,
+    sourceKind: source.kind,
+    visibleCashBalances: getVisibleCashBalances(account.cashBalances),
+  };
+}
+
 export function resolvePortfolioAccountState(
   portfolio: Portfolio | null,
   state: Pick<AppState, "config" | "brokerAccounts">,
@@ -151,6 +185,9 @@ export function resolvePortfolioAccountState(
   if (!portfolio?.brokerInstanceId) return null;
 
   const brokerInstance = getBrokerInstance(state.config.brokerInstances, portfolio.brokerInstanceId);
+  if (isBrokerCombinedPortfolioId(portfolio.id)) {
+    return resolveCombinedPortfolioAccountState(portfolio, state, liveSnapshot, brokerInstance);
+  }
   const relatedInstanceIds = [
     portfolio.brokerInstanceId,
     ...state.config.brokerInstances
@@ -288,7 +325,7 @@ export function buildPortfolioSummarySegments({
 export function buildPortfolioFooterSegments({
   accountState,
   accountStatusText,
-  activeCollectionId,
+  portfolioScope,
   baseCurrency,
   exchangeRates,
   financialsMap,
@@ -300,7 +337,7 @@ export function buildPortfolioFooterSegments({
 }: {
   accountState: PortfolioSummaryAccountState | null;
   accountStatusText?: string;
-  activeCollectionId: string | null;
+  portfolioScope: readonly string[] | undefined;
   baseCurrency: string;
   exchangeRates: Map<string, number>;
   financialsMap: Map<string, TickerFinancials>;
@@ -326,7 +363,7 @@ export function buildPortfolioFooterSegments({
     baseCurrency,
     exchangeRates,
     isPortfolioTab,
-    activeCollectionId,
+    portfolioScope,
   );
 
   if (!isPortfolioTab) {

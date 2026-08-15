@@ -63,11 +63,14 @@ export function ensureBrokerPortfolio(
   const existing = config.portfolios.find((portfolio) => portfolio.id === portfolioId);
   if (existing) {
     const updated = updateBrokerPortfolioSource(config, existing, instance, brokerAccountId, syncedAt);
-    return updated === existing
+    const refreshed = updated.brokerInstanceId && updated.name !== name
+      ? { ...updated, name }
+      : updated;
+    return refreshed === existing
       ? config
       : {
         ...config,
-        portfolios: config.portfolios.map((portfolio) => portfolio.id === portfolioId ? updated : portfolio),
+        portfolios: config.portfolios.map((portfolio) => portfolio.id === portfolioId ? refreshed : portfolio),
       };
   }
 

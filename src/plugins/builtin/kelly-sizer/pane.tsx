@@ -11,6 +11,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { useFxRatesMap, useTickerFinancials, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { formatCurrency } from "../../../utils/format";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
+import { resolveCollectionPortfolioIds } from "../../../utils/broker-collections";
 import {
   useAppDispatch,
   getFocusedCollectionId,
@@ -186,6 +187,10 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   );
   const fetchedExchangeRates = useFxRatesMap(trackedCurrencies);
   const exchangeRates = selectEffectiveExchangeRates(fetchedExchangeRates, cachedExchangeRates);
+  const activePortfolioIds = useMemo(
+    () => (activePortfolioId ? resolveCollectionPortfolioIds(config, activePortfolioId) : undefined),
+    [activePortfolioId, config],
+  );
   const portfolioSummary = useMemo(
     () => calculatePortfolioSummaryTotals(
       portfolioTickers,
@@ -193,9 +198,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       config.baseCurrency,
       exchangeRates,
       true,
-      activePortfolioId,
+      activePortfolioIds,
     ),
-    [activePortfolioId, config.baseCurrency, exchangeRates, portfolioFinancials, portfolioTickers],
+    [activePortfolioIds, config.baseCurrency, exchangeRates, portfolioFinancials, portfolioTickers],
   );
   const sourceBankroll = accountState?.account.netLiquidation
     ?? portfolioSummary.totalMktValue

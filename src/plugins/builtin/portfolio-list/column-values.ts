@@ -29,7 +29,7 @@ import {
 } from "./position-metrics";
 
 export interface ColumnContext {
-  activeTab?: string;
+  activePortfolioIds?: readonly string[];
   baseCurrency: string;
   exchangeRates: Map<string, number>;
   now: number;
@@ -74,21 +74,21 @@ function formatHeldDays(days: number | null): string {
   return `${formatNumber(days / 365, 1)}y`;
 }
 
-function activePositions(ticker: TickerRecord, activeTab: string | undefined): TickerRecord["metadata"]["positions"] {
-  return activeTab
-    ? ticker.metadata.positions.filter((position) => position.portfolio === activeTab)
+function activePositions(ticker: TickerRecord, activePortfolioIds: readonly string[] | undefined): TickerRecord["metadata"]["positions"] {
+  return activePortfolioIds
+    ? ticker.metadata.positions.filter((position) => activePortfolioIds.includes(position.portfolio))
     : ticker.metadata.positions;
 }
 
-function earliestDateAcquired(ticker: TickerRecord, activeTab: string | undefined): Date | null {
-  return activePositions(ticker, activeTab)
+function earliestDateAcquired(ticker: TickerRecord, activePortfolioIds: readonly string[] | undefined): Date | null {
+  return activePositions(ticker, activePortfolioIds)
     .map((position) => parseDateValue(position.dateAcquired))
     .filter((date): date is Date => date != null)
     .sort((left, right) => left.getTime() - right.getTime())[0] ?? null;
 }
 
-function positionSideLabel(ticker: TickerRecord, activeTab: string | undefined): string | null {
-  const positions = activePositions(ticker, activeTab);
+function positionSideLabel(ticker: TickerRecord, activePortfolioIds: readonly string[] | undefined): string | null {
+  const positions = activePositions(ticker, activePortfolioIds);
   if (positions.length === 0) return null;
   const shortCount = positions.filter((position) => position.side === "short").length;
   if (shortCount === 0) return "LONG";
@@ -192,7 +192,7 @@ export function getColumnValue(
   const fundamentals = financials?.fundamentals;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
-  const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency);
+  const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activePortfolioIds, quoteCurrency);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
   const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
   const brokerFallbackPnl = resolveBrokerFallbackPnl(positionMetrics, brokerFallbackMktValue);
@@ -302,7 +302,7 @@ export function getColumnValue(
       }
       return { text: "—" };
     case "side":
-      return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
+      return { text: positionSideLabel(ticker, ctx.activePortfolioIds) ?? "—" };
     case "shares":
       return { text: totalShares !== 0 ? formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) : "—" };
     case "avg_cost":
@@ -361,10 +361,10 @@ export function getColumnValue(
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
     case "acq_date": {
-      return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activeTab)) };
+      return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activePortfolioIds)) };
     }
     case "held": {
-      return { text: formatHeldDays(daysSince(earliestDateAcquired(ticker, ctx.activeTab), ctx.now)) };
+      return { text: formatHeldDays(daysSince(earliestDateAcquired(ticker, ctx.activePortfolioIds), ctx.now)) };
     }
     case "target": {
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
@@ -421,7 +421,7 @@ export function getSortValue(
   const fundamentals = financials?.fundamentals;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
-  const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency);
+  const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activePortfolioIds, quoteCurrency);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
   const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
   const brokerFallbackPnl = resolveBrokerFallbackPnl(positionMetrics, brokerFallbackMktValue);
@@ -502,7 +502,7 @@ export function getSortValue(
       }
       return null;
     case "side":
-      return positionSideLabel(ticker, ctx.activeTab);
+      return positionSideLabel(ticker, ctx.activePortfolioIds);
     case "shares":
       return totalShares !== 0 ? totalShares : null;
     case "avg_cost":
@@ -553,9 +553,9 @@ export function getSortValue(
         ? ((brokerMarkPrice - activeQuote.price) / Math.abs(activeQuote.price)) * 100
         : null;
     case "acq_date":
-      return earliestDateAcquired(ticker, ctx.activeTab)?.getTime() ?? null;
+      return earliestDateAcquired(ticker, ctx.activePortfolioIds)?.getTime() ?? null;
     case "held":
-      return daysSince(earliestDateAcquired(ticker, ctx.activeTab), ctx.now);
+      return daysSince(earliestDateAcquired(ticker, ctx.activePortfolioIds), ctx.now);
     case "target": {
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
       return analyst.pending ? null : targetValue(analyst.data);

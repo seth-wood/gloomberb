@@ -2,6 +2,10 @@ import type { PaneSettingOption, PaneSettingsDef, PaneTemplateContext } from "..
 import { DEFAULT_COLUMNS, DEFAULT_PORTFOLIO_COLUMN_IDS, type AppConfig, type ColumnConfig } from "../../../types/config";
 import { PRICE_SPARKLINE_COLUMN_ID, PRICE_SPARKLINE_PERIOD_LABEL } from "../../../components/price-sparkline/view";
 import { t } from "../../../i18n";
+import {
+  buildPortfolioCollectionEntries,
+  isPortfolioCollectionId,
+} from "../../../utils/broker-collections";
 
 type CollectionScope = "all" | "portfolios" | "watchlists" | "custom";
 export type PortfolioViewMode = "table" | "grid";
@@ -180,11 +184,7 @@ export function cleanPortfolioPaneSettings(settings: Record<string, unknown>): R
 
 export function getCollectionEntries(config: AppConfig): CollectionEntry[] {
   return [
-    ...config.portfolios.map((portfolio) => ({
-      id: portfolio.id,
-      name: portfolio.name,
-      kind: "portfolio" as const,
-    })),
+    ...buildPortfolioCollectionEntries(config),
     ...config.watchlists.map((watchlist) => ({
       id: watchlist.id,
       name: watchlist.name,
@@ -310,9 +310,10 @@ export function buildPortfolioPaneSettingsDef(
 
 export function resolveCollectionPaneId(context: PaneTemplateContext): string | null {
   if (context.activeCollectionId) {
-    const isPortfolio = context.config.portfolios.some((portfolio) => portfolio.id === context.activeCollectionId);
-    const isWatchlist = context.config.watchlists.some((watchlist) => watchlist.id === context.activeCollectionId);
-    if (isPortfolio || isWatchlist) {
+    if (isPortfolioCollectionId(context.config, context.activeCollectionId)) {
+      return context.activeCollectionId;
+    }
+    if (context.config.watchlists.some((watchlist) => watchlist.id === context.activeCollectionId)) {
       return context.activeCollectionId;
     }
   }

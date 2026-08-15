@@ -118,4 +118,41 @@ describe("mapSchwabPortfolioSnapshot", () => {
 
     expect(snapshot.positions).toHaveLength(0);
   });
+
+  test("uses nickname when account number lookup is missing", () => {
+    const snapshot = mapSchwabPortfolioSnapshot([
+      {
+        securitiesAccount: {
+          accountNumber: "HASH999",
+          type: "CASH",
+        },
+      },
+    ], [], 1_700_000_000_000, [
+      { accountNumber: "HASH999", nickname: "Roth IRA" },
+    ]);
+
+    expect(snapshot.accounts[0]?.name).toBe("Roth IRA");
+  });
+
+  test("does not use account type alone when hash lookup fails", () => {
+    const snapshot = mapSchwabPortfolioSnapshot([
+      {
+        securitiesAccount: {
+          accountNumber: "HASHABC",
+          type: "CASH",
+        },
+      },
+      {
+        securitiesAccount: {
+          accountNumber: "HASHDEF",
+          type: "CASH",
+        },
+      },
+    ], []);
+
+    expect(snapshot.accounts.map((account) => account.name)).toEqual([
+      "CASH • HABC",
+      "CASH • HDEF",
+    ]);
+  });
 });

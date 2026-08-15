@@ -53,7 +53,7 @@ function createFinancials(
 }
 
 const defaultColumnContext: ColumnContext = {
-  activeTab: "main",
+  activePortfolioIds: ["main"],
   baseCurrency: "USD",
   exchangeRates: new Map([["USD", 1]]),
   now: 1_700_000_010_000,
@@ -131,7 +131,7 @@ describe("portfolio-metrics", () => {
       "USD",
       new Map([["USD", 1]]),
       true,
-      "main",
+      ["main"],
     )).toMatchObject({
       totalMktValue: 1200,
       totalCostBasis: 1000,
@@ -160,7 +160,7 @@ describe("portfolio-metrics", () => {
       "USD",
       new Map([["USD", 1]]),
       true,
-      "main",
+      ["main"],
     )).toMatchObject({
       totalMktValue: 1250,
       totalCostBasis: 1000,
@@ -194,7 +194,7 @@ describe("portfolio-metrics", () => {
       "USD",
       new Map([["USD", 1]]),
       true,
-      "main",
+      ["main"],
     );
 
     expect(totals.totalMktValue).toBeCloseTo(58803.06, 2);

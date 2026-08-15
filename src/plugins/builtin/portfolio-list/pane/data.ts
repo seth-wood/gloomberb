@@ -9,6 +9,10 @@ import { resolveQuoteAgeTimestamp } from "../../../../market-data/quotes/time";
 import { compareSortValues } from "../../../../utils/sort-values";
 import { getSortValue, type ColumnContext } from "../metrics";
 import type { ResolvedPortfolioAccountState } from "../summary";
+import {
+  isPortfolioCollectionId,
+  resolveCollectionPortfolioIds,
+} from "../../../../utils/broker-collections";
 
 export const VISIBLE_QUOTE_REFRESH_COOLDOWN_MS = 15_000;
 export const VISIBLE_QUOTE_STREAM_MAX_AGE_MS = 15_000;
@@ -165,7 +169,7 @@ export function buildTrackedCurrencies(
 
 export function getCollectionTypeFromConfig(config: AppConfig, collectionId: string | null): "portfolio" | "watchlist" | null {
   if (!collectionId) return null;
-  if (config.portfolios.some((portfolio) => portfolio.id === collectionId)) return "portfolio";
+  if (isPortfolioCollectionId(config, collectionId)) return "portfolio";
   if (config.watchlists.some((watchlist) => watchlist.id === collectionId)) return "watchlist";
   return null;
 }
@@ -176,13 +180,17 @@ export function getCollectionTickersFromConfig(
   collectionId: string | null,
 ): TickerRecord[] {
   if (!collectionId) return [];
-  const isPortfolio = config.portfolios.some((portfolio) => portfolio.id === collectionId);
+  const isPortfolio = isPortfolioCollectionId(config, collectionId);
   const isWatchlist = !isPortfolio && config.watchlists.some((watchlist) => watchlist.id === collectionId);
   if (!isPortfolio && !isWatchlist) return [];
+
+  const portfolioIds = isPortfolio ? resolveCollectionPortfolioIds(config, collectionId) : [];
+  const portfolioIdSet = new Set(portfolioIds);
+
   return [...tickersBySymbol.values()]
     .filter((ticker) => (
       isPortfolio
-        ? ticker.metadata.portfolios.includes(collectionId)
+        ? ticker.metadata.portfolios.some((portfolioId) => portfolioIdSet.has(portfolioId))
         : ticker.metadata.watchlists.includes(collectionId)
     ))
     .sort((left, right) => left.metadata.ticker.localeCompare(right.metadata.ticker));
@@ -205,7 +213,7 @@ export function sortTickers(
     .join(",");
   const sortContextVersion = [
     sortColumn.id,
-    columnContext.activeTab ?? "",
+    columnContext.activePortfolioIds?.join(",") ?? "",
     columnContext.baseCurrency,
     columnContext.portfolioTotalMarketValue ?? 0,
     columnContext.supplementalVersion ?? 0,
