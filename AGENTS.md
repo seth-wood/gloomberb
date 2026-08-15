@@ -16,3 +16,13 @@ For desktop/Electrobun/web UI, do not draw GUI primitives with terminal cell cha
 Add mouse/cursor interactivity for everything interactive.
 Never fix chart issues by disabling / turning off the kitty renderer; preserve kitty support and fix the root cause.
 When adding new pane/plugin, read PLUGINS.md check how others are made first to keep UI consistent. Always prefer shared UI components and plugin APIs before rolling your own.
+
+## Cursor Cloud specific instructions
+
+Bun is the runtime and package manager (pinned by `package.json` `packageManager`). It is installed at `~/.bun/bin` and on `PATH` via `~/.bashrc`; the startup update script refreshes deps with `bun install --frozen-lockfile`. Standard scripts live in `package.json` and setup in `CONTRIBUTING.md`.
+
+Non-obvious gotchas:
+- `bun dev` / `bun run dev` uses `--watch` and never exits — use it only for the interactive TUI. For one-shot CLI/data commands use `bun start <cmd>` (e.g. `bun start quote AAPL`), which maps to `bun src/index.tsx <cmd>`.
+- CLI data commands require an initialized data directory (`~/gloomberb/`) or they exit with "No data directory configured." This is created the first time the TUI launches and its onboarding wizard is completed. The snapshot already has this initialized; if a fresh data dir is ever needed, launch `bun run dev` once and step through onboarding.
+- To exercise the TUI end to end, run it under tmux and drive it with keystrokes (see the `tui-testing` skill). Live market data (Yahoo/Cloud) works without auth; cloud/chat/AI features may return `auth_required` without a signed-in account.
+- Checks mirror CI (`.github/workflows/verify.yml`): `bun run typecheck`, `bun test`, `bun run desktop:view:build`, `bun run build`.
