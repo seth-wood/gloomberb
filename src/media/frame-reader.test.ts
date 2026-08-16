@@ -229,6 +229,27 @@ describe("frame reader", () => {
     if (process.platform === "win32") expect(argv).toContain("wasapi");
   });
 
+  test("paces a generated input in real time", () => {
+    let argv: readonly string[] = [];
+    const spawn = spawnFromChunks([]);
+    const reader = startFrameReader({
+      url: "testsrc2=rate=12",
+      width: WIDTH,
+      height: HEIGHT,
+      inputFormat: "lavfi",
+      realtime: true,
+      audio: "none",
+      spawn: (command) => {
+        argv = command;
+        return spawn(command);
+      },
+    });
+    readers.push(reader);
+
+    expect(argv.indexOf("-re")).toBeGreaterThan(-1);
+    expect(argv.indexOf("-re")).toBeLessThan(argv.indexOf("-i"));
+  });
+
   test("stop during an unsuccessful audio exit does not spawn a silent fallback", async () => {
     let starts = 0;
     const reader = startFrameReader({

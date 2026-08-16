@@ -41,6 +41,8 @@ export interface StartPlaybackSessionOptions {
   height: number;
   muted?: boolean;
   visible?: boolean;
+  /** Overrides the decoded input while retaining the Live Stream as Session metadata. */
+  frameSource?: Pick<StartFrameReaderOptions, "url" | "inputFormat" | "realtime" | "audio" | "fps">;
   renewLiveStream?: (current: ResolvedLiveStream) => Promise<ResolvedLiveStream>;
 }
 
@@ -171,6 +173,7 @@ class LivePlaybackSession implements PlaybackSession {
   private readonly deps: SessionDeps;
   private readonly onStoppedIfCurrent: (session: LivePlaybackSession) => void;
   private readonly renewLiveStream?: (current: ResolvedLiveStream) => Promise<ResolvedLiveStream>;
+  private readonly frameSource?: StartPlaybackSessionOptions["frameSource"];
   private resizeTask: ScheduledTask | null = null;
   private renewalTask: ScheduledTask | null = null;
   private pipelineRetryTask: ScheduledTask | null = null;
@@ -193,6 +196,7 @@ class LivePlaybackSession implements PlaybackSession {
     this.deps = config.deps;
     this.onStoppedIfCurrent = config.onStoppedIfCurrent;
     this.renewLiveStream = config.options.renewLiveStream;
+    this.frameSource = config.options.frameSource;
   }
 
   get state(): PlaybackSessionState {
@@ -342,10 +346,14 @@ class LivePlaybackSession implements PlaybackSession {
     const generation = this.generation;
     try {
       this.reader = this.deps.startFrameReader({
-        url: this._liveStream.manifestUrl,
+        url: this.frameSource?.url ?? this._liveStream.manifestUrl,
         width: this.width,
         height: this.height,
         muted: this.muted,
+        inputFormat: this.frameSource?.inputFormat,
+        realtime: this.frameSource?.realtime,
+        audio: this.frameSource?.audio,
+        fps: this.frameSource?.fps,
       });
     } catch {
       if (generation !== this.generation) return;

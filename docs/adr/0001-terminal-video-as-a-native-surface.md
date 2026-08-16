@@ -29,3 +29,13 @@ Measured 2026-08-15 on this machine, at the realistic pane resolution used while
 | Incompressible (CSPRNG) | 17.5 ms | 18.2 ms | ~2.1 MB | ~55 fps |
 
 That ceiling assumes video owns the terminal. It does not: chart redraws share the same kitty write path. At **12 fps** the write costs ~20% of the 83 ms frame budget and leaves room for a chart raster; at 30 fps it would consume half the budget before the TUI has done anything else. The rest of the work should treat **12 fps** as the source cap (`TERMINAL_VIDEO_FPS_CEILING`).
+
+## SET-64 gate result
+
+Resolved 2026-08-16: the existing transmission path carries the target rate. A 10-second end-to-end local run used ffmpeg's paced `testsrc2`, 736×544 RGBA frames, the Playback Session's latest-frame slot, and `KittyImageManager`; a separate 736×300 chart bitmap was retransmitted once per second to simulate interactive chart redraws. The renderer write was a no-op sink, matching the ceiling measurement above.
+
+- Video: **120 frames / 10.03 s = 11.97 fps**, with no missed frame slots
+- Chart: **11 redraws** during the same run
+- Combined kitty encode/transmit preparation: **4.76 ms mean**, **12.70 ms max**, against an 83.3 ms video frame budget
+
+A detached tmux smoke at 120×40 verified the no-kitty path: the TV pane showed fallback content, Ctrl-P opened the command bar while it remained mounted, moving and closing the pane completed through the remote-control API, no runtime warnings were logged, no ffmpeg process was started or orphaned, and the session was killed afterward. Native pixel placement, clipping, overlap, hide/reveal, move/resize, and withdrawal are covered by the native Surface manager and OpenTUI component tests because detached tmux cannot answer a terminal graphics capability query or capture kitty pixel layers.

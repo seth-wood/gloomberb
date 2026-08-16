@@ -35,6 +35,8 @@ export interface StartFrameReaderOptions {
   audio?: FrameAudioMode;
   /** ffmpeg `-f` before `-i`. Use `lavfi` for generated test patterns. */
   inputFormat?: string;
+  /** Pace a source that would otherwise generate frames as fast as possible. */
+  realtime?: boolean;
   spawn?: SpawnFrameSource;
   ffmpegPath?: string;
 }
@@ -100,6 +102,7 @@ function buildFfmpegArgv(
     "-hide_banner",
     "-loglevel", "error",
     ...(options.inputFormat ? ["-f", options.inputFormat] : []),
+    ...(options.realtime ? ["-re"] : []),
     "-i", options.url,
     "-map", "0:v:0",
     "-vf", `scale=${options.width}:${options.height}:flags=fast_bilinear,fps=${options.fps},format=rgba`,

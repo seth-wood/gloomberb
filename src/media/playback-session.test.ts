@@ -154,6 +154,33 @@ async function startPlaying(
 }
 
 describe("playback session registry", () => {
+  test("starts a generated frame source instead of the Live Stream manifest", async () => {
+    const { registry, starts } = createHarness();
+
+    await registry.start({
+      surfaceId: "tv-test-pattern",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+      frameSource: {
+        url: "testsrc2=rate=12",
+        inputFormat: "lavfi",
+        realtime: true,
+        audio: "none",
+      },
+    });
+
+    expect(starts).toEqual([{
+      url: "testsrc2=rate=12",
+      width: WIDTH,
+      height: HEIGHT,
+      muted: false,
+      inputFormat: "lavfi",
+      realtime: true,
+      audio: "none",
+    }]);
+  });
+
   test("starting a second session displaces the first and reports why", async () => {
     const { registry, readers } = createHarness();
     const first = await startPlaying(registry, readers, {

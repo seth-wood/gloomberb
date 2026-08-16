@@ -17,7 +17,7 @@ export interface LiveStreamResolveRequest {
 }
 
 export interface ResolvedLiveStream {
-  provider: "youtube";
+  provider: "youtube" | "generated";
   sourceId: string;
   videoId: string;
   title: string;
