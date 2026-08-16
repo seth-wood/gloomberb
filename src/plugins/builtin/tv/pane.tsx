@@ -95,7 +95,6 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
       ? await renderer.resolveLiveStream({ provider: "youtube", sourceId: channel.id, force: true })
       : await resolveTvStream(channel, { force: true });
     if (generation !== generationRef.current) return current;
-    if (nextStream.manifestUrl === current.manifestUrl) return current;
     setStream(nextStream);
     return nextStream;
   }, [channel, renderer]);

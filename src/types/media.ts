@@ -1,3 +1,6 @@
+/** Resolve a fresh Live Stream before its current manifest expires. */
+export const LIVE_STREAM_RENEWAL_MARGIN_MS = 60_000;
+
 export type ResolutionState = "resolving" | "resolved" | "unavailable";
 
 export type PlaybackSessionState =

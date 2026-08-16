@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import Hls from "hls.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { PlaybackSessionState } from "../../../../types/media";
+import { LIVE_STREAM_RENEWAL_MARGIN_MS, type PlaybackSessionState } from "../../../../types/media";
 import type { MediaSurfaceHandle, MediaSurfaceProps } from "../../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
 
@@ -13,9 +13,12 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     poster,
     autoPlay = false,
     muted = false,
+    liveStream,
+    renewLiveStream,
     mediaHandleRef,
     onPlaybackStateChange,
     onMutedChange,
+    onWarning: _onWarning,
     onError,
     ...props
   } = rawProps as MediaSurfaceProps & {
@@ -25,6 +28,8 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     poster?: string;
     autoPlay?: boolean;
     muted?: boolean;
+    liveStream?: MediaSurfaceProps["liveStream"];
+    renewLiveStream?: MediaSurfaceProps["renewLiveStream"];
     mediaHandleRef?: MediaSurfaceProps["mediaHandleRef"];
     onPlaybackStateChange?: (state: PlaybackSessionState) => void;
     onMutedChange?: (muted: boolean) => void;
@@ -59,6 +64,32 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       return video.muted;
     },
   }), [muted]);
+
+  useEffect(() => {
+    if (!liveStream || !renewLiveStream) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedule = (current: typeof liveStream, delayMs?: number) => {
+      const waitMs = delayMs
+        ?? Math.max(0, current.expiresAt - LIVE_STREAM_RENEWAL_MARGIN_MS - Date.now());
+      timer = setTimeout(() => {
+        void renewLiveStream(current).then((next) => {
+          if (!active) return;
+          if (next.manifestUrl !== current.manifestUrl) onPlaybackStateChange?.("stalled");
+          schedule(next);
+        }).catch(() => {
+          if (active) schedule(current, 5_000);
+        });
+      }, waitMs);
+    };
+
+    schedule(liveStream);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [liveStream, onPlaybackStateChange, renewLiveStream]);
 
   useEffect(() => {
     const video = videoRef.current;

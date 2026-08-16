@@ -1,13 +1,19 @@
 import { startFrameReader, type FrameReader, type RgbaFrame, type StartFrameReaderOptions } from "./frame-reader";
-import type { PlaybackSessionState, PlaybackStopReason, ResolvedLiveStream } from "../types/media";
+import {
+  LIVE_STREAM_RENEWAL_MARGIN_MS,
+  type PlaybackSessionState,
+  type PlaybackStopReason,
+  type ResolvedLiveStream,
+} from "../types/media";
 
-export { type PlaybackSessionState, type PlaybackStopReason } from "../types/media";
+export {
+  LIVE_STREAM_RENEWAL_MARGIN_MS,
+  type PlaybackSessionState,
+  type PlaybackStopReason,
+} from "../types/media";
 
 /** Debounce so a resize drag restarts the pipeline once, not once per event. */
 export const PLAYBACK_RESIZE_DEBOUNCE_MS = 150;
-
-/** Ask for a fresh Live Stream this far ahead of expiry, matching the resolver's cache margin. */
-export const LIVE_STREAM_RENEWAL_MARGIN_MS = 60_000;
 
 const LIVE_STREAM_RENEWAL_RETRY_MS = 5_000;
 
