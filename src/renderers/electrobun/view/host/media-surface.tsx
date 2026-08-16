@@ -13,6 +13,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     poster,
     autoPlay = false,
     muted = false,
+    playbackGeneration = 0,
     liveStream,
     renewLiveStream,
     mediaHandleRef,
@@ -28,6 +29,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     poster?: string;
     autoPlay?: boolean;
     muted?: boolean;
+    playbackGeneration?: number;
     liveStream?: MediaSurfaceProps["liveStream"];
     renewLiveStream?: MediaSurfaceProps["renewLiveStream"];
     mediaHandleRef?: MediaSurfaceProps["mediaHandleRef"];
@@ -166,7 +168,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.removeAttribute("src");
       video.load();
     };
-  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange]);
+  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange, playbackGeneration]);
 
   return (
     <div
@@ -181,7 +183,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     >
       {mediaSrc && !failed ? (
         <video
-          key={mediaSrc}
+          key={`${mediaSrc}:${playbackGeneration}`}
           ref={videoRef}
           aria-label={title || "Live TV stream"}
           title={title}

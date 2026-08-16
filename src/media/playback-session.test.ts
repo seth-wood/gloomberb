@@ -205,6 +205,45 @@ describe("playback session registry", () => {
     expect(registry.current).not.toBe(first);
   });
 
+  test("serializes concurrent starts so an in-flight displacement cannot orphan an interim session", async () => {
+    const { registry, readers } = createHarness({ slowStop: true });
+    await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    const firstReader = readers[0]!;
+
+    const firstDisplacement = registry.start({
+      surfaceId: "pane-b",
+      liveStream: liveStream({ videoId: "b", manifestUrl: "https://example.test/b.m3u8" }),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    await flush();
+    expect(firstReader.stopped).toBe(true);
+    expect(readers).toHaveLength(1);
+
+    const secondDisplacement = registry.start({
+      surfaceId: "pane-c",
+      liveStream: liveStream({ videoId: "c", manifestUrl: "https://example.test/c.m3u8" }),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    await flush();
+    expect(readers).toHaveLength(1);
+
+    firstReader.completeStop();
+    const [secondSession, thirdSession] = await Promise.all([firstDisplacement, secondDisplacement]);
+
+    expect(secondSession).not.toBe(thirdSession);
+    expect(readers).toHaveLength(3);
+    expect(readers[1]!.stopped).toBe(true);
+    expect(registry.current).toBe(thirdSession);
+    expect(readers[2]!.stopped).toBe(false);
+  });
+
   test("a hidden muted session stops its process, then resumes at the live edge as stalled", async () => {
     const { registry, readers } = createHarness();
     const session = await startPlaying(registry, readers, {
@@ -549,6 +588,49 @@ describe("playback session registry", () => {
     expect(session.state).toBe("failed");
     expect(session.failureMessage).toMatch(/stopped unexpectedly/i);
     expect(registry.current).toBe(session);
+  });
+
+  test("stopping a failed session releases the registry slot", async () => {
+    const { registry, readers } = createHarness();
+    const session = await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+
+    readers[0]!.finish();
+    await flush();
+
+    expect(session.state).toBe("failed");
+    expect(registry.current).toBe(session);
+
+    await session.stop("pane-close");
+    expect(session.stopReason).toBe("pane-close");
+    expect(registry.current).toBeNull();
+  });
+
+  test("displacing a failed session releases it from the registry", async () => {
+    const { registry, readers } = createHarness();
+    await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+
+    readers[0]!.finish();
+    await flush();
+    expect(registry.current?.state).toBe("failed");
+
+    const next = await registry.start({
+      surfaceId: "pane-b",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    expect(registry.current).toBe(next);
+    expect(registry.current?.surfaceId).toBe("pane-b");
   });
 
   test("forwards a silent-audio warning from the frame reader", async () => {

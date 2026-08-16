@@ -104,3 +104,45 @@ test("renews an expiring Live Stream and rejoins a rotated broadcast without fai
   expect(states).not.toContain("failed");
   expect(container.querySelector("video")?.getAttribute("src")).toBe(rotated.manifestUrl);
 });
+
+test("restarts playback when playbackGeneration bumps while the manifest URL is unchanged", async () => {
+  const { WebMediaSurface } = await import("./media-surface");
+  const stream = liveStream();
+  const states: string[] = [];
+  let generation = 0;
+
+  function Harness() {
+    return (
+      <WebMediaSurface
+        src={stream.manifestUrl}
+        playbackGeneration={generation}
+        autoPlay
+        muted
+        onPlaybackStateChange={(state) => states.push(state)}
+      />
+    );
+  }
+
+  container = testWindow.document.createElement("div") as unknown as HTMLElement;
+  testWindow.document.body.appendChild(container as never);
+  root = createRoot(container);
+  await runAct(async () => {
+    root!.render(<Harness />);
+  });
+  await runAct(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  const startingCount = states.filter((state) => state === "starting").length;
+  expect(startingCount).toBe(1);
+
+  generation += 1;
+  await runAct(async () => {
+    root!.render(<Harness />);
+  });
+  await runAct(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  expect(states.filter((state) => state === "starting").length).toBeGreaterThan(startingCount);
+});

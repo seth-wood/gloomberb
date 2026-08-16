@@ -498,6 +498,63 @@ describe("OpenTUI Media Surface", () => {
     expect(surfaceCount()).toBe(1);
   });
 
+  test("restarts playback after pause when playbackGeneration bumps while autoPlay stays true", async () => {
+    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    testSetup = await createTestRenderer({ width: 40, height: 12 });
+    setKittySupport(true);
+    root = createOpenTuiTestRoot(testSetup.renderer);
+    const harness = createRegistryHarness();
+    const mediaRef: { current: import("../../ui").MediaSurfaceHandle | null } = { current: null };
+    let generation = 0;
+
+    act(() => {
+      root!.render(
+        <OpenTuiMediaSurface
+          src="generated:test-pattern"
+          autoPlay
+          muted
+          width={20}
+          height={6}
+          playbackGeneration={generation}
+          sessionRegistry={harness.registry}
+          frameIntervalMs={10}
+          mediaHandleRef={mediaRef}
+        />,
+      );
+    });
+    await flushFrames();
+    expect(harness.starts).toHaveLength(1);
+
+    await act(async () => {
+      mediaRef.current?.pause();
+      await testSetup!.renderOnce();
+    });
+    await flushFrames();
+    expect(harness.current).toBeNull();
+
+    generation += 1;
+    act(() => {
+      root!.render(
+        <OpenTuiMediaSurface
+          src="generated:test-pattern"
+          autoPlay
+          muted
+          width={20}
+          height={6}
+          playbackGeneration={generation}
+          sessionRegistry={harness.registry}
+          frameIntervalMs={10}
+          mediaHandleRef={mediaRef}
+        />,
+      );
+    });
+    await flushFrames();
+
+    expect(harness.starts).toHaveLength(2);
+    expect(harness.current).not.toBeNull();
+    expect(surfaceCount()).toBe(1);
+  });
+
   test("does not bind a session that completes after pause during an in-flight start", async () => {
     actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     testSetup = await createTestRenderer({ width: 40, height: 12 });

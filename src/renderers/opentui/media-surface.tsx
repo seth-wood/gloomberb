@@ -342,6 +342,10 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   }, [mediaSrc, muted, playbackGeneration]);
 
   useEffect(() => {
+    if (autoPlay) {
+      enabledRef.current = true;
+      setEnabled(true);
+    }
     const owned = resolveOwnedSession();
     if (
       boundPlaybackGenerationRef.current !== null
@@ -351,7 +355,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
       detachSession();
       void owned.stop("pane-close");
     }
-  }, [detachSession, playbackGeneration, resolveOwnedSession]);
+  }, [autoPlay, detachSession, playbackGeneration, resolveOwnedSession]);
 
   useEffect(() => {
     enabledRef.current = autoPlay;

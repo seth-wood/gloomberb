@@ -128,6 +128,9 @@ export function createPlaybackSessionRegistry(
       }
     },
     async start(startOptions) {
+      if (startInFlight) {
+        await startInFlight.catch(() => {});
+      }
       const run = (async (): Promise<PlaybackSession> => {
         const displaced = current;
         current = null;
@@ -274,7 +277,7 @@ class LivePlaybackSession implements PlaybackSession {
 
   async stop(reason: PlaybackStopReason): Promise<void> {
     if (this.stopInFlight) return this.stopInFlight;
-    if (this.hasEnded()) return;
+    if (this.hasEnded() && this._state !== "failed") return;
     this.stopInFlight = this.finishStop(reason);
     try {
       await this.stopInFlight;
