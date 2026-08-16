@@ -1,7 +1,11 @@
 import { createContext, useContext, type ComponentType, type ReactNode, type Ref } from "react";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { AppNotificationRequest } from "../types/plugin";
-import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../types/media";
+import type {
+  LiveStreamResolveRequest,
+  PlaybackSessionState,
+  ResolvedLiveStream,
+} from "../types/media";
 import type { AsciiFontName } from "./ascii-font";
 
 export const TextAttributes = {
@@ -243,7 +247,7 @@ export interface MediaSurfaceProps extends BoxProps {
   autoPlay?: boolean;
   muted?: boolean;
   mediaHandleRef?: Ref<MediaSurfaceHandle>;
-  onPlaybackStateChange?: (state: "idle" | "loading" | "playing" | "paused" | "error") => void;
+  onPlaybackStateChange?: (state: PlaybackSessionState) => void;
   onMutedChange?: (muted: boolean) => void;
   onError?: (message: string) => void;
 }
