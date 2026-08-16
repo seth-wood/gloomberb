@@ -210,13 +210,6 @@ export class NativeSurfaceManager {
     this.localOccluders.clear();
   }
 
-  retransmitAll() {
-    for (const entry of this.surfaces.values()) {
-      entry.imageManager.forgetPlacedImages();
-      this.syncSurface(entry);
-    }
-  }
-
   private syncAll() {
     for (const entry of this.surfaces.values()) {
       this.syncSurface(entry);
