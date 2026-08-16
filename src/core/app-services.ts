@@ -12,7 +12,6 @@ import { debugLog } from "../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../utils/perf-marks";
 import { setIbkrPortfolioPerformanceResourceStore } from "../plugins/ibkr/portfolio-performance";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
-import { getPlaybackSessionRegistry } from "../media/playback-session";
 
 const servicesLog = debugLog.createLogger("services");
 
@@ -81,9 +80,6 @@ export function createAppServices({
   });
   servicesLog.info("create services complete", { pluginCount: plugins.length });
 
-  const playbackRegistry = getPlaybackSessionRegistry();
-  playbackRegistry.acquire();
-
   return {
     persistence,
     tickerRepository,
@@ -100,14 +96,13 @@ export function createAppServices({
       pluginRegistry.destroy();
       setIbkrPortfolioPerformanceResourceStore(null);
       persistence.close();
-      await playbackRegistry.release();
     },
   };
 }
 
 let pendingDestroy: Promise<void> | null = null;
 
-/** Tracks an in-flight App teardown so process exit can await ffmpeg shutdown. */
+/** Tracks an in-flight App teardown so process exit can await services shutdown. */
 export function trackAppServicesDestroy(destroy: Promise<void>): void {
   pendingDestroy = destroy;
 }

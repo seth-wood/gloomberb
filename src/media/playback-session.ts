@@ -1,6 +1,6 @@
 import { startFrameReader, type FrameReader, type RgbaFrame, type StartFrameReaderOptions } from "./frame-reader";
+import { scheduleLiveStreamRenewal } from "./live-stream-renewal";
 import {
-  LIVE_STREAM_RENEWAL_MARGIN_MS,
   type PlaybackSessionState,
   type PlaybackStopReason,
   type ResolvedLiveStream,
@@ -14,8 +14,6 @@ export {
 
 /** Debounce so a resize drag restarts the pipeline once, not once per event. */
 export const PLAYBACK_RESIZE_DEBOUNCE_MS = 150;
-
-const LIVE_STREAM_RENEWAL_RETRY_MS = 5_000;
 
 /** Retry a restart-driven pipeline start this far after startFrameReader throws. */
 export const PLAYBACK_PIPELINE_RESTART_RETRY_MS = 1_000;
@@ -190,9 +188,8 @@ class LivePlaybackSession implements PlaybackSession {
   private readonly renewLiveStream?: (current: ResolvedLiveStream) => Promise<ResolvedLiveStream>;
   private readonly frameSource?: StartPlaybackSessionOptions["frameSource"];
   private resizeTask: ScheduledTask | null = null;
-  private renewalTask: ScheduledTask | null = null;
+  private renewalHandle: { cancel(): void } | null = null;
   private pipelineRetryTask: ScheduledTask | null = null;
-  private renewing = false;
   private stopInFlight: Promise<void> | null = null;
 
   constructor(config: {
@@ -436,38 +433,28 @@ class LivePlaybackSession implements PlaybackSession {
     this.startPipeline("stalled");
   }
 
-  private armRenewal(delayMs?: number): void {
-    this.renewalTask?.cancel();
-    this.renewalTask = null;
+  private armRenewal(): void {
+    this.renewalHandle?.cancel();
+    this.renewalHandle = null;
     if (!this.renewLiveStream) return;
-    const waitMs = delayMs ?? Math.max(0, this._liveStream.expiresAt - LIVE_STREAM_RENEWAL_MARGIN_MS - this.deps.now());
-    this.renewalTask = this.deps.schedule(() => {
-      this.renewalTask = null;
-      void this.requestRenewal();
-    }, waitMs);
-  }
-
-  private async requestRenewal(): Promise<void> {
-    if (!this.renewLiveStream || this.renewing || this.hasEnded()) return;
-    this.renewing = true;
-    try {
-      const nextStream = await this.renewLiveStream(this._liveStream);
-      if (this.hasEnded()) return;
-      this._liveStream = nextStream;
-      this.armRenewal();
-      if (this.shouldRunPipeline()) await this.restartPipeline();
-    } catch {
-      if (!this.hasEnded()) this.armRenewal(LIVE_STREAM_RENEWAL_RETRY_MS);
-    } finally {
-      this.renewing = false;
-    }
+    this.renewalHandle = scheduleLiveStreamRenewal({
+      liveStream: this._liveStream,
+      renewLiveStream: this.renewLiveStream,
+      now: this.deps.now,
+      schedule: this.deps.schedule,
+      isActive: () => !this.hasEnded(),
+      onRenewed: (next) => {
+        this._liveStream = next;
+        if (this.shouldRunPipeline()) void this.restartPipeline();
+      },
+    });
   }
 
   private cancelTimers(): void {
     this.resizeTask?.cancel();
     this.resizeTask = null;
-    this.renewalTask?.cancel();
-    this.renewalTask = null;
+    this.renewalHandle?.cancel();
+    this.renewalHandle = null;
     this.pipelineRetryTask?.cancel();
     this.pipelineRetryTask = null;
   }

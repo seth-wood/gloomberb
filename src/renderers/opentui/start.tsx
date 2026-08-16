@@ -25,6 +25,7 @@ import {
   installAiRunHost,
 } from "../../plugins/builtin/ai/runner";
 import { awaitAppServicesDestroy, createAppServices } from "../../core/app-services";
+import { getPlaybackSessionRegistry, type PlaybackSessionRegistry } from "../../media/playback-session";
 
 const AI_STARTUP_READINESS_TIMEOUT_MS = 5_000;
 
@@ -84,6 +85,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
   const stopMainThreadMonitor = startMainThreadMonitor("opentui");
 
   let host: Awaited<ReturnType<typeof createOpenTuiHost>> | null = null;
+  let playbackRegistry: PlaybackSessionRegistry | null = null;
   let exitTimer: ReturnType<typeof setTimeout> | null = null;
   const finishProcessExit = () => {
     stopMainThreadMonitor();
@@ -91,6 +93,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
     exitTimer = setTimeout(() => {
       void (async () => {
         await awaitAppServicesDestroy();
+        if (playbackRegistry) await playbackRegistry.release();
         process.exit(process.exitCode ?? 0);
       })();
     }, 0);
@@ -131,6 +134,8 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
     }
     host = await measurePerfAsync("startup.opentui.create-host", () => createOpenTuiHost());
     host.renderer.once("destroy", finishProcessExit);
+    playbackRegistry = getPlaybackSessionRegistry();
+    playbackRegistry.acquire();
 
     host.render(
       <UiHostProvider ui={openTuiUiHost} renderer={host.rendererHost} nativeRenderer={host.nativeRenderer}>
@@ -158,6 +163,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
     if (exitTimer) clearTimeout(exitTimer);
     stopMainThreadMonitor();
     host?.renderer.off("destroy", finishProcessExit);
+    if (playbackRegistry) await playbackRegistry.release();
     host?.destroy();
     throw error;
   }
