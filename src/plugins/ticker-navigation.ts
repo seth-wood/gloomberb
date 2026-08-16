@@ -1,6 +1,7 @@
 import {
   findPaneInstance,
   normalizePaneId,
+  resolveFollowBindingInstance,
   TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
   type PaneInstanceConfig,
@@ -15,6 +16,18 @@ export function resolveTickerNavigationReplacementPane(
   return sourceInstance?.paneId === TICKER_RESEARCH_PANE_ID && isPaneInLayout(layout, sourceInstance.instanceId)
     ? sourceInstance
     : null;
+}
+
+function isCollectionPaneInstance(instance: PaneInstanceConfig): boolean {
+  return instance.paneId === "portfolio-list";
+}
+
+export function resolveFollowBoundTickerResearchCollectionPane(
+  layout: LayoutConfig,
+  instance: PaneInstanceConfig,
+): PaneInstanceConfig | null {
+  if (!isFollowBoundTickerResearchPane(instance)) return null;
+  return resolveFollowBindingInstance(layout, instance.instanceId, isCollectionPaneInstance) ?? null;
 }
 
 export function isFollowBoundTickerResearchPane(instance: PaneInstanceConfig | null | undefined): boolean {

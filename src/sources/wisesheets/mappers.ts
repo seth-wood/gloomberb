@@ -239,7 +239,7 @@ function finalizeStatement(statement: FinancialStatement): FinancialStatement {
   const dates = Object.values(statement.fieldAvailability ?? {})
     .filter((entry) => entry)
     .sort();
-  if (dates.length > 0) statement.availableAt = dates[0];
+  if (dates.length > 0) statement.availableAt = dates.at(-1);
   return statement;
 }
 

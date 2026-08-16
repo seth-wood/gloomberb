@@ -8,6 +8,7 @@ import {
 import {
   findFixedTickerPaneForSymbol,
   isFollowBoundTickerResearchPane,
+  resolveFollowBoundTickerResearchCollectionPane,
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
 } from "./ticker-navigation";
@@ -57,6 +58,39 @@ describe("resolveTickerNavigationReplacementPane", () => {
     expect(
       isFollowBoundTickerResearchPane(resolveTickerNavigationReplacementPane(layout, "ticker-detail:portfolio")),
     ).toBe(true);
+  });
+});
+
+describe("resolveFollowBoundTickerResearchCollectionPane", () => {
+  test("walks follow bindings through non-collection panes to the portfolio list", () => {
+    const layout = createLayout([
+      createPaneInstance("portfolio-list", {
+        instanceId: "portfolio-list:main",
+        binding: { kind: "none" },
+      }),
+      createPaneInstance("comparison-chart", {
+        instanceId: "comparison-chart:main",
+        binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" },
+      }),
+      createPaneInstance("ticker-detail", {
+        instanceId: "ticker-detail:compare",
+        binding: { kind: "follow", sourceInstanceId: "comparison-chart:main" },
+      }),
+    ]);
+
+    const researchPane = layout.instances.find((instance) => instance.instanceId === "ticker-detail:compare");
+    expect(resolveFollowBoundTickerResearchCollectionPane(layout, researchPane!)?.instanceId).toBe("portfolio-list:main");
+  });
+
+  test("returns null for fixed ticker research panes", () => {
+    const layout = createLayout([
+      createPaneInstance("ticker-detail", {
+        instanceId: "ticker-detail:aapl",
+        binding: { kind: "fixed", symbol: "AAPL" },
+      }),
+    ]);
+
+    expect(resolveFollowBoundTickerResearchCollectionPane(layout, layout.instances[0]!)).toBeNull();
   });
 });
 

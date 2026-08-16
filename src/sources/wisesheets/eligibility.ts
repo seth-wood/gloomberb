@@ -5,6 +5,6 @@ export function isWisesheetsEligibleSymbol(ticker: string, exchange = ""): boole
   if (!normalized) return false;
   const exchangeNorm = exchange.trim().toUpperCase();
   if (exchangeNorm && !isUsExchange(exchangeNorm)) return false;
-  if (normalized.includes(".")) return isUsShareClassTicker(normalized, exchange);
-  return true;
+  if (isUsShareClassTicker(normalized, exchange)) return true;
+  return isUsExchange(exchangeNorm);
 }

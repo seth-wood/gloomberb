@@ -1,5 +1,5 @@
 import { useCallback, type Dispatch } from "react";
-import { isFollowBoundTickerResearchPane } from "../../plugins/ticker-navigation";
+import { resolveFollowBoundTickerResearchCollectionPane } from "../../plugins/ticker-navigation";
 import {
   createPaneInstance,
   findPaneInstance,
@@ -76,10 +76,14 @@ export function useCommandBarPaneActions({
     }
 
     if (focusedPane?.paneId === TICKER_RESEARCH_PANE_ID) {
-      if (isFollowBoundTickerResearchPane(focusedPane) && focusedPane.binding?.kind === "follow") {
+      const collectionPane = resolveFollowBoundTickerResearchCollectionPane(
+        currentState.config.layout,
+        focusedPane,
+      );
+      if (collectionPane) {
         dispatch({
           type: "UPDATE_PANE_STATE",
-          paneId: focusedPane.binding.sourceInstanceId,
+          paneId: collectionPane.instanceId,
           patch: { cursorSymbol: symbol },
         });
         dispatch({ type: "FOCUS_PANE", paneId: focusedPane.instanceId });

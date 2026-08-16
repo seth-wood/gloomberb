@@ -21,10 +21,11 @@ afterEach(async () => {
 
 describe("isWisesheetsEligibleSymbol", () => {
   test("accepts plain US tickers and US share classes, rejects foreign names", () => {
-    expect(isWisesheetsEligibleSymbol("AAPL")).toBe(true);
+    expect(isWisesheetsEligibleSymbol("AAPL")).toBe(false);
     expect(isWisesheetsEligibleSymbol("AAPL", "NASDAQ")).toBe(true);
     expect(isWisesheetsEligibleSymbol("BRK.B")).toBe(true);
     expect(isWisesheetsEligibleSymbol("BRK.B", "NYSE")).toBe(true);
+    expect(isWisesheetsEligibleSymbol("VOD")).toBe(false);
     expect(isWisesheetsEligibleSymbol("VOD.L")).toBe(false);
     expect(isWisesheetsEligibleSymbol("VOD", "LSE")).toBe(false);
   });
@@ -38,7 +39,7 @@ describe("WisesheetsProvider.canProvide", () => {
     const provider = new WisesheetsProvider(credentialStore);
     expect(await provider.canProvide("AAPL")).toBe(false);
     await credentialStore.setApiKey("test-key");
-    expect(await provider.canProvide("AAPL")).toBe(true);
+    expect(await provider.canProvide("AAPL", "NASDAQ")).toBe(true);
     expect(await provider.canProvide("BRK.B")).toBe(true);
     expect(await provider.canProvide("VOD", "LSE")).toBe(false);
   });

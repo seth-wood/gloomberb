@@ -110,11 +110,14 @@ export class WisesheetsClient {
     throw createProviderMiss(`Wisesheets request failed after retries for ${path}`);
   }
 
-  private unwrapData(payload: unknown): unknown[] {
+  private unwrapData(payload: unknown, allowEmpty = false): unknown[] {
     if (!payload || typeof payload !== "object") throw createProviderMiss("Wisesheets response was empty");
     const data = (payload as { data?: unknown }).data;
     if (!Array.isArray(data)) throw createProviderMiss("Wisesheets response contained no data");
-    if (data.length === 0) throw createProviderMiss("Wisesheets returned no financial rows");
+    if (data.length === 0) {
+      if (allowEmpty) return [];
+      throw createProviderMiss("Wisesheets returned no financial rows");
+    }
     return data;
   }
 
@@ -138,6 +141,7 @@ export class WisesheetsClient {
     metrics: string[],
     period: string,
     frequency: "annual" | "quarterly",
+    options?: { allowEmpty?: boolean },
   ): Promise<WisesheetsPeriodValues[]> {
     const payload = await this.requestJson("/financials/", {
       tickers: ticker,
@@ -147,7 +151,8 @@ export class WisesheetsClient {
       layout: "long",
       include: "source",
     });
-    const rows = this.unwrapData(payload) as WisesheetsFinancialRow[];
+    const rows = this.unwrapData(payload, options?.allowEmpty) as WisesheetsFinancialRow[];
+    if (rows.length === 0) return [];
     return this.periodsForTicker(rows, ticker);
   }
 
@@ -216,7 +221,7 @@ export class WisesheetsClient {
   ): Promise<ReturnType<typeof buildTickerFinancials>> {
     const [annualFinancials, quarterlyFinancials, annualStatements, quarterlyStatements, profile] = await Promise.all([
       this.fetchFinancials(symbol, ANNUAL_METRICS, annualRange, "annual"),
-      this.fetchFinancials(symbol, QUARTERLY_METRICS, "last4q", "quarterly"),
+      this.fetchFinancials(symbol, QUARTERLY_METRICS, "last4q", "quarterly", { allowEmpty: true }),
       this.fetchStatements(symbol, annualRange, "annual"),
       this.fetchStatements(symbol, "last4q", "quarterly"),
       this.fetchCompanyProfile(symbol),

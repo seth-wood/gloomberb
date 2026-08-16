@@ -44,7 +44,40 @@ describe("WisesheetsClient", () => {
     });
 
     const client = new WisesheetsClient({ credentialStore: store });
-    await expect(client.getTickerFinancials("AAPL")).rejects.toThrow("Wisesheets returned no financial rows for AAPL");
+    await expect(client.getTickerFinancials("AAPL", "NASDAQ")).rejects.toThrow("Wisesheets returned no financial rows for AAPL");
+  });
+
+  test("returns annual financials when quarterly last4q is empty", async () => {
+    const dataDir = await tempDataDir();
+    const store = new WisesheetsCredentialStore(dataDir);
+    await store.setApiKey("test-key");
+
+    setHttpFetchTransport(async (url) => {
+      if (url.includes("/me/")) {
+        return new Response(JSON.stringify({ limits: { historyYears: 5 } }), { status: 200 });
+      }
+      if (url.includes("/financials/")) {
+        const isQuarterly = url.includes("frequency=quarterly");
+        if (isQuarterly) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({
+          data: [{
+            ticker: "AAPL",
+            periodEnd: "2024-09-30",
+            metric: "revenue",
+            value: 100,
+            fiscalYear: 2024,
+          }],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: {} }), { status: 200 });
+    });
+
+    const client = new WisesheetsClient({ credentialStore: store });
+    const financials = await client.getTickerFinancials("AAPL", "NASDAQ");
+    expect(financials.annualStatements).toHaveLength(1);
+    expect(financials.quarterlyStatements).toHaveLength(0);
   });
 
   test("retries transient 503 responses and returns provider miss on empty data", async () => {
@@ -62,7 +95,7 @@ describe("WisesheetsClient", () => {
     });
 
     const client = new WisesheetsClient({ credentialStore: store });
-    await expect(client.getTickerFinancials("AAPL")).rejects.toThrow("Wisesheets returned no financial rows");
+    await expect(client.getTickerFinancials("AAPL", "NASDAQ")).rejects.toThrow("Wisesheets returned no financial rows");
     expect(attempts).toBeGreaterThanOrEqual(2);
   });
 });

@@ -67,6 +67,22 @@ function annualRows(): WisesheetsFinancialRow[] {
 }
 
 describe("wisesheets mappers", () => {
+  test("uses the latest staggered field filing date for availableAt", () => {
+    const statement = mapPeriodToFinancialStatement({
+      period_end: "2025-09-27",
+      sources: {
+        revenue: { kind: "reported", filingDate: "2025-10-31" },
+        eps_diluted: { kind: "reported", filingDate: "2025-11-15" },
+      },
+      revenue: 400,
+      eps_diluted: 4.4,
+    });
+
+    expect(statement.fieldAvailability?.totalRevenue).toBe("2025-10-31");
+    expect(statement.fieldAvailability?.eps).toBe("2025-11-15");
+    expect(statement.availableAt).toBe("2025-11-15");
+  });
+
   test("maps long-layout rows into statement years with debt fallbacks and provenance", () => {
     const grouped = groupByTickerPeriod(annualRows());
     const latest = grouped.AAPL["2025-09-27"];
