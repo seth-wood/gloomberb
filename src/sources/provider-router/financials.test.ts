@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   dropUnusableProviderQuote,
   isProviderQuoteUsableForCurrentSession,
+  shouldStopProviderFinancialFetch,
 } from "./financials";
 import { makeFinancials, makeQuote } from "./test-support";
 
@@ -59,5 +60,22 @@ describe("provider-router financial quote usability", () => {
 
     expect(value.profile?.sector).toBe("Industrials");
     expect(value.quote).toBeUndefined();
+  });
+});
+
+describe("shouldStopProviderFinancialFetch", () => {
+  const deepDetailed = makeFinancials({
+    annualStatements: Array.from({ length: 5 }, (_, index) => ({
+      date: `20${index + 20}-12-31`,
+      stockBasedCompensation: 1,
+    })),
+    quarterlyStatements: Array.from({ length: 8 }, (_, index) => ({
+      date: `20${index + 20}-03-31`,
+    })),
+  });
+
+  test("allows Yahoo to run after Wisesheets even when history looks complete", () => {
+    expect(shouldStopProviderFinancialFetch("wisesheets", deepDetailed)).toBe(false);
+    expect(shouldStopProviderFinancialFetch("gloomberb-cloud", deepDetailed)).toBe(true);
   });
 });

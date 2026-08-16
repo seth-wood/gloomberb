@@ -32,6 +32,19 @@ describe("parseTickerLookup", () => {
     expect(lookup.get("MSFT")?.cik).toBe("0000789019");
   });
 
+  test("indexes US share-class aliases for SEC tickers", () => {
+    const lookup = parseTickerLookup({
+      fields: ["cik", "name", "ticker", "exchange"],
+      data: [
+        [1067983, "BERKSHIRE HATHAWAY INC", "BRK-B", "NYSE"],
+      ],
+    });
+
+    expect(lookup.get("BRK-B")?.cik).toBe("0001067983");
+    expect(lookup.get("BRK.B")?.cik).toBe("0001067983");
+    expect(lookup.get("BRKB")?.cik).toBe("0001067983");
+  });
+
   test("supports legacy numbered lookup payloads", () => {
     const lookup = parseTickerLookup({
       "0": { cik_str: 320193, ticker: "AAPL", title: "Apple Inc." },

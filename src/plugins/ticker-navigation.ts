@@ -17,6 +17,23 @@ export function resolveTickerNavigationReplacementPane(
     : null;
 }
 
+export function isFollowBoundTickerResearchPane(instance: PaneInstanceConfig | null | undefined): boolean {
+  if (!instance || instance.paneId !== TICKER_RESEARCH_PANE_ID) return false;
+  const binding = instance.binding;
+  if (!binding) return false;
+  switch (binding.kind) {
+    case "follow":
+      return true;
+    case "fixed":
+    case "none":
+      return false;
+    default: {
+      const _exhaustive: never = binding;
+      return _exhaustive;
+    }
+  }
+}
+
 export function findFixedTickerPaneForSymbol(
   layout: LayoutConfig,
   paneId: string,

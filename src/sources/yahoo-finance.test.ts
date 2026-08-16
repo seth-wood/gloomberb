@@ -103,6 +103,55 @@ describe("YahooFinanceClient exchange aliases", () => {
     ]);
   });
 
+  test("keeps Yahoo line items for the annual year that falls off the current 4-period window", async () => {
+    const provider = new YahooFinanceClient() as any;
+    const point = (type: string, date: string, value: number) => ({
+      meta: { type: [type] },
+      [type]: [{ asOfDate: date, reportedValue: { raw: value } }],
+    });
+
+    provider.fetchChart = async () => ({
+      meta: { currency: "USD", regularMarketPrice: 100, shortName: "BRK-B" },
+      history: [{ date: new Date("2025-12-31T00:00:00Z"), close: 100 }],
+    });
+    provider.fetchAssetProfile = async () => undefined;
+    provider.fetchQuoteSupplement = async () => ({});
+    provider.fetchExtendedHoursData = async () => ({});
+    provider.secClient.getFinancialStatements = async () => null;
+    provider.fetchTimeseries = async (
+      _symbol: string,
+      _types: string[],
+      _period1?: string,
+      period2?: Date | string,
+    ) => {
+      if (period2) {
+        return [
+          point("annualAccountsReceivable", "2021-12-31", 11_000_000_000),
+          point("annualCurrentDebt", "2021-12-31", 4_000_000_000),
+          point("annualOperatingCashFlow", "2021-12-31", 39_000_000_000),
+          point("annualTotalRevenue", "2021-12-31", 276_000_000_000),
+        ];
+      }
+      return [
+        point("annualAccountsReceivable", "2025-12-31", 15_000_000_000),
+        point("annualCurrentDebt", "2025-12-31", 5_000_000_000),
+        point("annualOperatingCashFlow", "2025-12-31", 40_000_000_000),
+        point("annualTotalRevenue", "2025-12-31", 300_000_000_000),
+      ];
+    };
+
+    const financials = await provider.getTickerFinancials("BRK-B", "NYSE");
+    const oldest = financials.annualStatements[0];
+
+    expect(oldest).toMatchObject({
+      date: "2021-12-31",
+      accountsReceivable: 11_000_000_000,
+      currentDebt: 4_000_000_000,
+      operatingCashFlow: 39_000_000_000,
+      totalRevenue: 276_000_000_000,
+    });
+  });
+
   test("tries the Taipei Exchange suffix for TPEX tickers", () => {
     expect(getYahooSymbolsToTry("3105", "TPEX")).toEqual(["3105.TWO", "3105.TW"]);
   });

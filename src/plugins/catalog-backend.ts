@@ -15,11 +15,13 @@ import { notesPlugin } from "./builtin/notes";
 import { substackPlugin } from "./builtin/substack";
 import { tickerResearchBackendPlugin } from "./builtin/ticker-research-backend-plugin";
 import { yahooPlugin } from "./builtin/yahoo";
+import { wisesheetsPlugin } from "./builtin/wisesheets";
 import { ibkrPlugin } from "./ibkr";
 import { predictionMarketsBackendPlugin } from "./prediction-markets/backend-plugin";
 
 const desktopBackendPlugins: GloomPlugin[] = [
   yahooPlugin,
+  wisesheetsPlugin,
   gloomberbCloudPlugin,
   portfolioPlugin,
   tickerResearchBackendPlugin,

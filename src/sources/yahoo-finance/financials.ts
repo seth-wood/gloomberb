@@ -167,6 +167,28 @@ export function parseYahooTimeseries(results: Array<Record<string, any>>): Yahoo
   return parsed;
 }
 
+/** Yahoo returns at most four annual and four quarterly points ending at period2. */
+export function yahooTimeseriesPriorWindowEnd(now = new Date()): Date {
+  const end = new Date(now.getTime());
+  end.setUTCFullYear(end.getUTCFullYear() - 1);
+  return end;
+}
+
+export function mergeYahooTimeseriesMetrics(
+  ...windows: YahooTimeseriesMetrics[]
+): YahooTimeseriesMetrics {
+  const merged: YahooTimeseriesMetrics = {};
+  for (const window of windows) {
+    for (const [type, points] of Object.entries(window)) {
+      const byDate = new Map<string, YahooTimeseriesPoint>();
+      for (const point of merged[type] ?? []) byDate.set(point.asOfDate, point);
+      for (const point of points) byDate.set(point.asOfDate, point);
+      merged[type] = [...byDate.values()].sort((left, right) => left.asOfDate.localeCompare(right.asOfDate));
+    }
+  }
+  return merged;
+}
+
 export function latestYahooMetric(metrics: YahooTimeseriesMetrics, type: string): number | undefined {
   const points = metrics[type];
   return points?.length ? points[points.length - 1]!.value : undefined;

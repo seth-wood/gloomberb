@@ -92,9 +92,10 @@ export async function fetchYahooTimeseries(
   symbol: string,
   types: string[],
   period1 = "2010-01-01",
+  period2?: Date | string,
 ): Promise<Array<Record<string, any>>> {
   const p1 = Math.floor(new Date(period1).getTime() / 1000);
-  const p2 = Math.floor(Date.now() / 1000);
+  const p2 = Math.floor((period2 === undefined ? Date.now() : new Date(period2).getTime()) / 1000);
   const params = new URLSearchParams({
     type: types.join(","),
     period1: String(p1),

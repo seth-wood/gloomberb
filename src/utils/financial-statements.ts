@@ -2,6 +2,23 @@ import type { FinancialStatement } from "../types/financials";
 
 const STATEMENT_METADATA_KEYS = new Set(["date", "availableAt", "fieldAvailability"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
+const ADJACENT_MONTH_END_MS = 31 * 24 * 60 * 60 * 1_000;
+
+function utcDateTime(value: string | Date): number | null {
+  const time = value instanceof Date ? value.getTime() : Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time) ? time : null;
+}
+
+function isUtcMonthEnd(time: number): boolean {
+  const date = new Date(time);
+  const nextMonth = Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
+  return time === nextMonth - 24 * 60 * 60 * 1_000;
+}
+
+function utcMonthIndex(time: number): number {
+  const date = new Date(time);
+  return date.getUTCFullYear() * 12 + date.getUTCMonth();
+}
 
 function metricKeys(...rows: Array<FinancialStatement | undefined>): string[] {
   return [...new Set(rows.flatMap((row) => Object.keys(row ?? {})))]
@@ -31,19 +48,25 @@ function canonicalStatementDate(
 }
 
 function statementDateTime(row: FinancialStatement): number | null {
-  const time = Date.parse(`${row.date}T00:00:00Z`);
-  return Number.isFinite(time) ? time : null;
+  return utcDateTime(row.date);
 }
 
 export function areNearbyFinancialPeriodEnds(
   left: string | Date,
   right: string | Date,
 ): boolean {
-  const leftTime = left instanceof Date ? left.getTime() : Date.parse(`${left}T00:00:00Z`);
-  const rightTime = right instanceof Date ? right.getTime() : Date.parse(`${right}T00:00:00Z`);
-  return Number.isFinite(leftTime)
-    && Number.isFinite(rightTime)
-    && Math.abs(leftTime - rightTime) <= NEARBY_PERIOD_END_MS;
+  const leftTime = utcDateTime(left);
+  const rightTime = utcDateTime(right);
+  if (leftTime === null || rightTime === null) return false;
+  const distance = Math.abs(leftTime - rightTime);
+  if (distance <= NEARBY_PERIOD_END_MS) return true;
+  // Yahoo calendar-normalizes January/April/July/October fiscal closes to the
+  // prior calendar month-end (VEEV 2023-01-31 vs 2022-12-31). Keep mid-month
+  // dates on the 7-day window so distinct periods stay distinct.
+  return distance <= ADJACENT_MONTH_END_MS
+    && isUtcMonthEnd(leftTime)
+    && isUtcMonthEnd(rightTime)
+    && Math.abs(utcMonthIndex(leftTime) - utcMonthIndex(rightTime)) === 1;
 }
 
 function matchFallbackRow(

@@ -122,6 +122,27 @@ describe("mergeFinancialStatementRows", () => {
     expect(merged.map((row) => row.date)).toEqual(["2025-06-30", "2025-07-15"]);
   });
 
+  test("coalesces a January fiscal close with the prior December calendar month-end", () => {
+    const [merged] = mergeFinancialStatementRows(
+      [{
+        date: "2023-01-31",
+        totalRevenue: 2153e6,
+        fieldAvailability: { totalRevenue: "2023-03-30" },
+      }],
+      [{
+        date: "2022-12-31",
+        totalRevenue: 2153e6,
+        operatingRevenue: 2153e6,
+        researchAndDevelopment: 400e6,
+      }],
+    );
+
+    expect(merged?.date).toBe("2023-01-31");
+    expect(merged?.totalRevenue).toBe(2153e6);
+    expect(merged?.operatingRevenue).toBe(2153e6);
+    expect(merged?.researchAndDevelopment).toBe(400e6);
+  });
+
   test("retains a primary fiscal close when only the fallback is calendar-normalized", () => {
     const merged = mergeFinancialStatementRows(
       [{

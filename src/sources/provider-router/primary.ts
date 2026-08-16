@@ -5,12 +5,11 @@ import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/reso
 import { shouldLogProviderError } from "../provider-errors";
 import {
   dropUnusableProviderQuote,
-  hasDetailedStatementRows,
-  hasDeepStatementHistory,
   hasStatementRows,
   isProviderQuoteUsableForCurrentSession,
   mergeMissingStatementArrays,
   mergeFinancials,
+  shouldStopProviderFinancialFetch,
 } from "./financials";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
 
@@ -84,7 +83,7 @@ export class ProviderRouterPrimaryRoutes {
         );
         if (!primaryResult) {
           primaryResult = { sourceKey, value };
-          if (hasDetailedStatementRows(value) && hasDeepStatementHistory(value)) return primaryResult;
+          if (shouldStopProviderFinancialFetch(provider.id, value)) return primaryResult;
           continue;
         }
         if (!primaryResult.value.quote && value.quote) {
@@ -103,7 +102,6 @@ export class ProviderRouterPrimaryRoutes {
             sourceKey: primaryResult.sourceKey,
             value: mergeMissingStatementArrays(primaryResult.value, value),
           };
-          if (hasDetailedStatementRows(primaryResult.value) && hasDeepStatementHistory(primaryResult.value)) return primaryResult;
         }
       } catch (error) {
         if (shouldLogProviderError(error)) {

@@ -2,6 +2,7 @@ import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { FinancialStatement } from "../types/financials";
 import { truncateWithEllipsis } from "../utils/text-wrap";
 import { decodeHtmlEntities } from "../utils/html-entities";
+import { usShareClassTickerAliases } from "../utils/sec";
 import {
   PDF_FALLBACK_MESSAGE,
   extractFilingContent,
@@ -202,6 +203,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function indexTickerLookupEntry(
+  results: Map<string, LookupEntry>,
+  ticker: string,
+  entry: LookupEntry,
+): void {
+  for (const alias of usShareClassTickerAliases(ticker)) {
+    if (!results.has(alias)) results.set(alias, entry);
+  }
+}
+
 export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
   const results = new Map<string, LookupEntry>();
   const record = asRecord(payload);
@@ -223,7 +234,7 @@ export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
       const ticker = normalize(String(row[tickerIndex] ?? ""));
       const cik = zeroPadCik(row[cikIndex]);
       if (!ticker || !cik) continue;
-      results.set(ticker, {
+      indexTickerLookupEntry(results, ticker, {
         cik,
         exchange: typeof row[exchangeIndex] === "string" ? row[exchangeIndex] as string : undefined,
         name: typeof row[nameIndex] === "string" ? row[nameIndex] as string : undefined,
@@ -238,7 +249,7 @@ export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
     const ticker = normalize(String(entry.ticker ?? entry.symbol ?? ""));
     const cik = zeroPadCik(entry.cik ?? entry.cik_str);
     if (!ticker || !cik) continue;
-    results.set(ticker, {
+    indexTickerLookupEntry(results, ticker, {
       cik,
       exchange: typeof entry.exchange === "string" ? entry.exchange : undefined,
       name: typeof entry.title === "string"

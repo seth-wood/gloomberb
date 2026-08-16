@@ -7,6 +7,7 @@ import {
 } from "../types/config";
 import {
   findFixedTickerPaneForSymbol,
+  isFollowBoundTickerResearchPane,
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
 } from "./ticker-navigation";
@@ -53,6 +54,9 @@ describe("resolveTickerNavigationReplacementPane", () => {
     expect(
       resolveTickerNavigationReplacementPane(layout, "ticker-detail:portfolio")?.instanceId,
     ).toBe("ticker-detail:portfolio");
+    expect(
+      isFollowBoundTickerResearchPane(resolveTickerNavigationReplacementPane(layout, "ticker-detail:portfolio")),
+    ).toBe(true);
   });
 });
 

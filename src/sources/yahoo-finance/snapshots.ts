@@ -9,7 +9,9 @@ import {
   buildYahooStatements,
   computeYahooReturn,
   latestYahooMetric,
+  mergeYahooTimeseriesMetrics,
   parseYahooTimeseries,
+  yahooTimeseriesPriorWindowEnd,
   YAHOO_TIMESERIES_TYPES,
 } from "./financials";
 import {
@@ -52,6 +54,7 @@ interface YahooSnapshotLoaders {
     symbol: string,
     types: string[],
     period1?: string,
+    period2?: Date | string,
   ) => Promise<Array<Record<string, any>>>;
   providerId: string;
 }
@@ -109,20 +112,30 @@ export async function loadYahooTickerFinancials(
   symbol: string,
   loaders: YahooSnapshotLoaders,
 ): Promise<TickerFinancials> {
-  const [chart, tsRaw, profile] = await Promise.all([
+  const timeseriesTypes = [
+    ...YAHOO_TIMESERIES_TYPES.annual,
+    ...YAHOO_TIMESERIES_TYPES.quarterly,
+    ...YAHOO_TIMESERIES_TYPES.trailing,
+  ];
+  const [chart, currentTsRaw, priorTsRaw, profile] = await Promise.all([
     loaders.fetchChart(symbol, "5y"),
-    loaders.fetchTimeseries(symbol, [
-      ...YAHOO_TIMESERIES_TYPES.annual,
-      ...YAHOO_TIMESERIES_TYPES.quarterly,
-      ...YAHOO_TIMESERIES_TYPES.trailing,
-    ]),
+    loaders.fetchTimeseries(symbol, timeseriesTypes),
+    loaders.fetchTimeseries(
+      symbol,
+      timeseriesTypes,
+      "2010-01-01",
+      yahooTimeseriesPriorWindowEnd(),
+    ).catch(() => []),
     loaders.fetchAssetProfile(symbol).catch(() => undefined),
   ]);
 
   const { meta, history } = chart;
   if (!history.length) throw new Error(`No history for ${symbol}`);
 
-  const metrics = parseYahooTimeseries(tsRaw);
+  const metrics = mergeYahooTimeseriesMetrics(
+    parseYahooTimeseries(priorTsRaw),
+    parseYahooTimeseries(currentTsRaw),
+  );
   const latest = (type: string) => latestYahooMetric(metrics, type);
   const { normalizedCurrency, currencyDivisor } = normalizeChartCurrency(chart);
   const quoteSupplement = await loaders.fetchQuoteSupplement(symbol, currencyDivisor);

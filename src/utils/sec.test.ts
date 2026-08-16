@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
-import { isUsEquityTicker } from "./sec";
+import { isUsEquityTicker, usShareClassTickerAliases } from "./sec";
 
 function makeTicker(overrides: Partial<TickerRecord["metadata"]>): TickerRecord {
   return {
@@ -39,5 +39,12 @@ describe("isUsEquityTicker", () => {
     expect(isUsEquityTicker(makeTicker({
       assetCategory: "OPT",
     }))).toBe(false);
+  });
+});
+
+describe("usShareClassTickerAliases", () => {
+  test("expands dotted and hyphenated share classes", () => {
+    expect(usShareClassTickerAliases("BRK.B")).toEqual(["BRK.B", "BRK-B", "BRKB"]);
+    expect(usShareClassTickerAliases("AAPL")).toEqual(["AAPL"]);
   });
 });

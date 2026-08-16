@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch } from "react";
+import { isFollowBoundTickerResearchPane } from "../../plugins/ticker-navigation";
 import {
   createPaneInstance,
   findPaneInstance,
@@ -75,12 +76,21 @@ export function useCommandBarPaneActions({
     }
 
     if (focusedPane?.paneId === TICKER_RESEARCH_PANE_ID) {
+      if (isFollowBoundTickerResearchPane(focusedPane) && focusedPane.binding?.kind === "follow") {
+        dispatch({
+          type: "UPDATE_PANE_STATE",
+          paneId: focusedPane.binding.sourceInstanceId,
+          patch: { cursorSymbol: symbol },
+        });
+        dispatch({ type: "FOCUS_PANE", paneId: focusedPane.instanceId });
+        return;
+      }
       retargetTickerResearchPane(focusedPane.instanceId, symbol);
       return;
     }
 
     openFixedTickerPane(symbol);
-  }, [openFixedTickerPane, retargetTickerResearchPane, stateRef]);
+  }, [dispatch, openFixedTickerPane, retargetTickerResearchPane, stateRef]);
 
   const persistLayoutChange = useCallback((nextLayout: LayoutConfig) => {
     pluginRegistry.updateLayoutFn(nextLayout);

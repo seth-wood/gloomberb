@@ -112,8 +112,13 @@ export class YahooFinanceClient implements DataProvider {
     return fetchYahooExtendedHoursData(this.http, symbol, meta, regularClose);
   }
 
-  private async fetchTimeseries(symbol: string, types: string[], period1 = "2010-01-01") {
-    return fetchYahooTimeseries(this.http, symbol, types, period1);
+  private async fetchTimeseries(
+    symbol: string,
+    types: string[],
+    period1 = "2010-01-01",
+    period2?: Date | string,
+  ) {
+    return fetchYahooTimeseries(this.http, symbol, types, period1, period2);
   }
 
   private async fetchAssetProfile(symbol: string): Promise<CompanyProfile | undefined> {
@@ -140,7 +145,8 @@ export class YahooFinanceClient implements DataProvider {
           fetchExtendedHoursData: (targetSymbol, meta) => this.fetchExtendedHoursData(targetSymbol, meta),
           fetchQuoteSupplement: (targetSymbol, currencyDivisor) =>
             this.fetchQuoteSupplement(targetSymbol, currencyDivisor),
-          fetchTimeseries: (targetSymbol, types, period1) => this.fetchTimeseries(targetSymbol, types, period1),
+          fetchTimeseries: (targetSymbol, types, period1, period2) =>
+            this.fetchTimeseries(targetSymbol, types, period1, period2),
           providerId: this.id,
         });
         return await this.supplementSecStatements(ticker, exchange, result);

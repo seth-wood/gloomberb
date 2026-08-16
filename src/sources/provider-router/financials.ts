@@ -177,6 +177,18 @@ export function hasShallowStatementHistory(data: TickerFinancials | null | undef
   return hasStatementRows(data) && !hasDeepStatementHistory(data);
 }
 
+/** Whether routing can stop before lower-priority providers such as Yahoo. */
+export function shouldStopProviderFinancialFetch(
+  providerId: string,
+  data: TickerFinancials | null | undefined,
+): boolean {
+  if (!data) return false;
+  if (!hasDetailedStatementRows(data) || !hasDeepStatementHistory(data)) return false;
+  // Wisesheets adds filed depth, not Yahoo-grade line-item coverage across every row.
+  if (providerId === "wisesheets") return false;
+  return true;
+}
+
 export function mergeMissingStatementArrays(primary: TickerFinancials, fallback: TickerFinancials): TickerFinancials {
   return {
     ...primary,
