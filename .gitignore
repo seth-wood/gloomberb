@@ -41,3 +41,7 @@ src-tauri/gen
 
 .codex/
 paseo.json
+
+# local agent docs
+AGENTS.md
+docs/agents/
