@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import Hls from "hls.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { PlaybackSessionState } from "../../../../types/media";
 import type { MediaSurfaceHandle, MediaSurfaceProps } from "../../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
 
@@ -25,7 +26,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     autoPlay?: boolean;
     muted?: boolean;
     mediaHandleRef?: MediaSurfaceProps["mediaHandleRef"];
-    onPlaybackStateChange?: (state: "idle" | "loading" | "playing" | "paused" | "error") => void;
+    onPlaybackStateChange?: (state: PlaybackSessionState) => void;
     onMutedChange?: (muted: boolean) => void;
     onError?: (message: string) => void;
   };
@@ -67,23 +68,25 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     }
 
     setFailed(false);
-    onPlaybackStateChange?.("loading");
+    onPlaybackStateChange?.("starting");
     let hls: Hls | null = null;
 
     let active = true;
     const fail = (message: string) => {
       if (!active) return;
       setFailed(true);
-      onPlaybackStateChange?.("error");
+      onPlaybackStateChange?.("failed");
       onError?.(message);
     };
     const handlePlaying = () => onPlaybackStateChange?.("playing");
-    const handlePause = () => onPlaybackStateChange?.("paused");
-    const handleWaiting = () => onPlaybackStateChange?.("loading");
+    const handlePause = () => onPlaybackStateChange?.("stopped");
+    const handleEnded = () => onPlaybackStateChange?.("stopped");
+    const handleWaiting = () => onPlaybackStateChange?.("stalled");
     const handleVolumeChange = () => onMutedChange?.(video.muted);
     const handleError = () => fail("The live stream could not be played.");
     video.addEventListener("playing", handlePlaying);
     video.addEventListener("pause", handlePause);
+    video.addEventListener("ended", handleEnded);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("volumechange", handleVolumeChange);
     video.addEventListener("error", handleError);
@@ -94,7 +97,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     const startPlayback = () => {
       if (!autoPlay) return;
       void video.play().catch(() => {
-        if (active) onPlaybackStateChange?.("paused");
+        if (active) onPlaybackStateChange?.("stopped");
       });
     };
 
@@ -124,6 +127,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       hls?.destroy();
       video.removeEventListener("playing", handlePlaying);
       video.removeEventListener("pause", handlePause);
+      video.removeEventListener("ended", handleEnded);
       video.removeEventListener("waiting", handleWaiting);
       video.removeEventListener("volumechange", handleVolumeChange);
       video.removeEventListener("error", handleError);

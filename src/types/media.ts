@@ -1,3 +1,15 @@
+/** Resolution, as defined in `CONTEXT.md`. Distinct from playback state. */
+export type ResolutionState = "resolving" | "resolved" | "unavailable";
+
+/** Playback Session, as defined in `CONTEXT.md`. A live broadcast has no paused state. */
+export type PlaybackSessionState =
+  | "idle"
+  | "starting"
+  | "playing"
+  | "stalled"
+  | "stopped"
+  | "failed";
+
 export interface LiveStreamResolveRequest {
   provider: "youtube";
   sourceId: string;

@@ -13,10 +13,8 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ImageSurface, MediaSurface, Text, useRendererHost, useUiHost, type MediaSurfaceHandle } from "../../../ui";
 import { getTvChannel, TV_CHANNELS, type TvChannelId } from "./channels";
-import type { ResolvedLiveStream } from "../../../types/media";
+import type { PlaybackSessionState, ResolutionState, ResolvedLiveStream } from "../../../types/media";
 import { resolveTvStream } from "./youtube-stream";
-
-type PlaybackState = "idle" | "loading" | "playing" | "paused" | "error";
 
 export function TvPane({ paneId, focused, width, height }: PaneProps) {
   const isDesktop = useUiHost().kind === "desktop-web";
@@ -29,15 +27,16 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
   );
   const [channelId, setChannelId] = useState<TvChannelId>(initialChannelIdRef.current);
   const [stream, setStream] = useState<ResolvedLiveStream | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [resolution, setResolution] = useState<ResolutionState>("resolving");
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
+  const [playbackState, setPlaybackState] = useState<PlaybackSessionState>("idle");
   const [muted, setMuted] = useState(true);
   const mediaRef = useRef<MediaSurfaceHandle | null>(null);
   const terminalAutoPlayedRef = useRef<string | null>(null);
   const generationRef = useRef(0);
   const channel = getTvChannel(channelId);
+  const resolving = resolution === "resolving";
 
   const persistChannelSelection = useCallback((nextId: TvChannelId) => {
     const nextChannel = getTvChannel(nextId);
@@ -63,7 +62,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
 
   const load = useCallback(async (force = false) => {
     const generation = ++generationRef.current;
-    setLoading(true);
+    setResolution("resolving");
     setError(null);
     setPlaybackError(null);
     setPlaybackState("idle");
@@ -74,12 +73,12 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
         : await resolveTvStream(channel, { force });
       if (generation !== generationRef.current) return;
       setStream(nextStream);
+      setResolution("resolved");
     } catch (cause) {
       if (generation !== generationRef.current) return;
       setStream(null);
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      if (generation === generationRef.current) setLoading(false);
+      setResolution("unavailable");
     }
   }, [channel, renderer]);
 
@@ -111,20 +110,20 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
     setPlaybackState("playing");
     try {
       await renderer.playTerminalMedia(stream.manifestUrl, stream.title, { muted });
-      setPlaybackState("paused");
+      setPlaybackState("stopped");
     } catch (cause) {
-      setPlaybackState("error");
+      setPlaybackState("failed");
       setPlaybackError(cause instanceof Error ? cause.message : String(cause));
     }
   }, [muted, renderer, stream]);
 
   useEffect(() => {
-    if (isDesktop || loading || !stream || stream.sourceId !== channel.id) return;
+    if (isDesktop || resolving || !stream || stream.sourceId !== channel.id) return;
     const streamKey = `${stream.sourceId}:${stream.videoId}`;
     if (terminalAutoPlayedRef.current === streamKey) return;
     terminalAutoPlayedRef.current = streamKey;
     void playInTerminal();
-  }, [channel.id, isDesktop, loading, playInTerminal, stream]);
+  }, [channel.id, isDesktop, playInTerminal, resolving, stream]);
 
   const togglePlayback = useCallback(async () => {
     setPlaybackError(null);
@@ -135,7 +134,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
         await playInTerminal();
       }
     } catch (cause) {
-      setPlaybackState("error");
+      setPlaybackState("failed");
       setPlaybackError(cause instanceof Error ? cause.message : String(cause));
     }
   }, [isDesktop, playInTerminal]);
@@ -173,13 +172,13 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
     }
   });
 
-  const status = loading
+  const status = resolving
     ? `resolving ${channel.name}`
     : error || playbackError
       ? "stream error"
       : playbackState === "playing"
         ? "playing live"
-        : playbackState === "loading"
+        : playbackState === "starting" || playbackState === "stalled"
           ? "buffering live"
           : stream
             ? "live"
@@ -199,18 +198,18 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
         key: "p",
         label: playbackState === "playing" ? "ause" : "lay",
         onPress: () => { void togglePlayback(); },
-        disabled: loading || !stream,
+        disabled: resolving || !stream,
       },
       {
         id: "mute",
         key: "m",
         label: muted ? "unmute" : "ute",
         onPress: toggleMute,
-        disabled: loading || !stream,
+        disabled: resolving || !stream,
       },
-      { id: "refresh", key: "r", label: "efresh", onPress: refresh, disabled: loading },
+      { id: "refresh", key: "r", label: "efresh", onPress: refresh, disabled: resolving },
     ],
-  }), [error, loading, muted, paneId, playbackError, playbackState, refresh, status, stream, toggleMute, togglePlayback]);
+  }), [error, muted, paneId, playbackError, playbackState, refresh, resolving, status, stream, toggleMute, togglePlayback]);
 
   const channelTabs = useMemo(() => TV_CHANNELS.map((item, index) => ({
     label: `${index + 1} ${item.name}`,
@@ -231,7 +230,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
         />
       </Box>
 
-      {loading && !stream ? (
+      {resolving && !stream ? (
         <Box flexGrow={1} justifyContent="center" alignItems="center">
           <Text fg={colors.textMuted}>{`Resolving ${channel.name} live stream...`}</Text>
         </Box>
