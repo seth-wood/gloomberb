@@ -1,6 +1,5 @@
-import { createElement, forwardRef, useCallback, useEffect, useMemo, useRef, useState, type ForwardedRef, type ReactNode } from "react";
+import { createElement, forwardRef, useCallback, useEffect, useMemo, useRef, type ForwardedRef, type ReactNode } from "react";
 import {
-  computeBitmapSize,
   intersectCellRects,
   renderCrosshairStrips,
   type CellRect,
@@ -10,29 +9,14 @@ import { scaleLocalPixelCoordinate } from "../../components/chart/core/pointer";
 import type { ChartRendererPreference } from "../../components/chart/core/types";
 import { useResolvedChartRendererState } from "../../components/chart/native/renderer-selection";
 import { getNativeSurfaceManager } from "../../components/chart/native/surface/manager";
-import {
-  getRenderableCellRect,
-  resolveNativeSurfaceVisibleRect,
-  type NativeSurfaceRenderableNode,
-} from "../../components/chart/native/surface/visibility";
 import { useOptionalAppSelector, useOptionalPaneInstanceId } from "../../state/app/context";
-import { useNativeRenderer, type BoxRenderable, type ChartSurfaceProps } from "../../ui";
+import { useNativeRenderer, type ChartSurfaceProps } from "../../ui";
 import type { ChartCrosshairOverlay } from "../../ui/host";
-
-interface NativeRenderableNode extends BoxRenderable, NativeSurfaceRenderableNode {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  parent: NativeRenderableNode | null;
-  onLifecyclePass: (() => void) | null;
-}
-
-interface SurfaceTarget {
-  rect: CellRect;
-  visibleRect: CellRect | null;
-  bitmapKey: string;
-}
+import {
+  useNativeSurfaceGeometry,
+  useNativeSurfacePublication,
+  type NativeSurfaceRenderableNode,
+} from "./native-surface";
 
 let nextChartSurfaceId = 1;
 
@@ -47,23 +31,6 @@ function assignRef(ref: ForwardedRef<unknown>, value: unknown) {
   if (ref) {
     (ref as { current: unknown }).current = value;
   }
-}
-
-function sameRect(left: CellRect | null, right: CellRect | null): boolean {
-  if (left === right) return true;
-  if (!left || !right) return false;
-  return left.x === right.x
-    && left.y === right.y
-    && left.width === right.width
-    && left.height === right.height;
-}
-
-function sameTarget(left: SurfaceTarget | null, right: SurfaceTarget | null): boolean {
-  if (left === right) return true;
-  if (!left || !right) return false;
-  return left.bitmapKey === right.bitmapKey
-    && sameRect(left.rect, right.rect)
-    && sameRect(left.visibleRect, right.visibleRect);
 }
 
 // ponytail: identity token instead of hashing every pixel — renderers always
@@ -94,8 +61,7 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
   const nativeSurfacesEnabled = nativeBitmapsEnabled && rendererState.renderer === "kitty";
   const nativeSurfaceManager = useMemo(() => getNativeSurfaceManager(renderer), [renderer]);
   const surfaceId = useRef(`opentui-chart:${nextChartSurfaceId++}`).current;
-  const renderableRef = useRef<NativeRenderableNode | null>(null);
-  const [target, setTarget] = useState<SurfaceTarget | null>(null);
+  const renderableRef = useRef<NativeSurfaceRenderableNode | null>(null);
   // Only the base layer reaches the terminal: each extra layer would need its own
   // kitty surface and z-index. Composite overlays into the bitmap you pass here.
   const firstBitmap = Array.isArray(bitmaps) ? bitmaps[0] : null;
@@ -104,57 +70,29 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
   const nativeBitmapKey = useMemo(() => (nativeBitmap ? bitmapKey(nativeBitmap) : null), [nativeBitmap]);
 
   const setRenderableRef = useCallback((node: unknown) => {
-    renderableRef.current = node as NativeRenderableNode | null;
+    renderableRef.current = node as NativeSurfaceRenderableNode | null;
     assignRef(forwardedRef, node);
   }, [forwardedRef]);
 
-  useEffect(() => {
-    const renderable = renderableRef.current;
-    if (!renderable || !nativeBitmap || !nativeBitmapKey || !nativeSurfacesEnabled) {
-      setTarget(null);
-      return;
-    }
+  const geometry = useNativeSurfaceGeometry({
+    renderer,
+    renderableRef,
+    enabled: Boolean(nativeSurfacesEnabled && nativeBitmap && nativeBitmapKey),
+  });
 
-    let mountTimer: Timer | null = null;
-    const previousLifecyclePass = renderable.onLifecyclePass;
-    const syncTarget = () => {
-      const rect = getRenderableCellRect(renderable);
-      if (!renderer.resolution || renderer.terminalWidth <= 0 || renderer.terminalHeight <= 0) {
-        setTarget((current) => (current === null ? current : null));
-        return;
+  useNativeSurfacePublication({
+    renderer,
+    surfaceId,
+    paneId,
+    surface: nativeSurfacesEnabled && geometry?.visibleRect && nativeBitmap && nativeBitmapKey
+      ? {
+        rect: geometry.rect,
+        visibleRect: geometry.visibleRect,
+        bitmap: nativeBitmap,
+        bitmapKey: `${nativeBitmapKey}:${geometry.pixelWidth}x${geometry.pixelHeight}`,
       }
-
-      const visibleRect = resolveNativeSurfaceVisibleRect(renderable, renderer.terminalWidth, renderer.terminalHeight);
-      const clippedVisibleRect = visibleRect ? intersectCellRects(rect, visibleRect) : null;
-      const expectedSize = computeBitmapSize(rect, renderer.resolution, renderer.terminalWidth, renderer.terminalHeight);
-      const nextTarget: SurfaceTarget = {
-        rect,
-        visibleRect: clippedVisibleRect,
-        bitmapKey: `${nativeBitmapKey}:${expectedSize.pixelWidth}x${expectedSize.pixelHeight}`,
-      };
-      setTarget((current) => (sameTarget(current, nextTarget) ? current : nextTarget));
-    };
-    const lifecyclePass = () => {
-      previousLifecyclePass?.();
-      syncTarget();
-    };
-
-    renderable.onLifecyclePass = lifecyclePass;
-    renderer.registerLifecyclePass(renderable);
-    syncTarget();
-    mountTimer = setTimeout(() => {
-      syncTarget();
-      renderer.requestRender();
-    }, 0);
-
-    return () => {
-      if (mountTimer) clearTimeout(mountTimer);
-      if (renderable.onLifecyclePass === lifecyclePass) {
-        renderable.onLifecyclePass = previousLifecyclePass;
-      }
-      renderer.unregisterLifecyclePass(renderable);
-    };
-  }, [nativeBitmap, nativeBitmapKey, nativeSurfacesEnabled, renderer]);
+      : null,
+  });
 
   const crosshairSurfaceIds = useMemo(
     () => [`${surfaceId}:crosshair-v`, `${surfaceId}:crosshair-h`] as const,
@@ -163,53 +101,34 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
 
   useEffect(() => {
     return () => {
-      nativeSurfaceManager.removeSurface(surfaceId);
       for (const id of crosshairSurfaceIds) nativeSurfaceManager.removeSurface(id);
     };
-  }, [crosshairSurfaceIds, nativeSurfaceManager, surfaceId]);
-
-  useEffect(() => {
-    if (!nativeSurfacesEnabled || !target?.visibleRect || !nativeBitmap) {
-      nativeSurfaceManager.removeSurface(surfaceId);
-      return;
-    }
-
-    nativeSurfaceManager.upsertSurface({
-      id: surfaceId,
-      paneId: paneId ?? "__global__",
-      rect: target.rect,
-      visibleRect: target.visibleRect,
-      bitmap: nativeBitmap,
-      bitmapKey: target.bitmapKey,
-    });
-    renderer.requestRender();
-  }, [nativeBitmap, nativeSurfaceManager, nativeSurfacesEnabled, paneId, renderer, surfaceId, target]);
+  }, [crosshairSurfaceIds, nativeSurfaceManager]);
 
   // Crosshair moves only re-encode two thin strips, leaving the plot image resident.
   useEffect(() => {
     const removeAll = () => {
       for (const id of crosshairSurfaceIds) nativeSurfaceManager.removeSurface(id);
     };
-    const visibleRect = target?.visibleRect;
-    if (!nativeSurfacesEnabled || !nativeCrosshair || !nativeBitmap || !target || !visibleRect || !renderer.resolution) {
+    const visibleRect = geometry?.visibleRect;
+    if (!nativeSurfacesEnabled || !nativeCrosshair || !nativeBitmap || !geometry || !visibleRect) {
       removeAll();
       return;
     }
 
-    const { rect } = target;
-    const size = computeBitmapSize(rect, renderer.resolution, renderer.terminalWidth, renderer.terminalHeight);
+    const { rect } = geometry;
     const strips = renderCrosshairStrips({
-      pixelX: scaleLocalPixelCoordinate(nativeCrosshair.pixelX, nativeBitmap.width, size.pixelWidth) ?? 0,
-      pixelY: scaleLocalPixelCoordinate(nativeCrosshair.pixelY, nativeBitmap.height, size.pixelHeight) ?? 0,
-      pixelWidth: size.pixelWidth,
-      pixelHeight: size.pixelHeight,
+      pixelX: scaleLocalPixelCoordinate(nativeCrosshair.pixelX, nativeBitmap.width, geometry.pixelWidth) ?? 0,
+      pixelY: scaleLocalPixelCoordinate(nativeCrosshair.pixelY, nativeBitmap.height, geometry.pixelHeight) ?? 0,
+      pixelWidth: geometry.pixelWidth,
+      pixelHeight: geometry.pixelHeight,
       cols: rect.width,
       rows: rect.height,
-      cellWidth: size.cellWidth,
-      cellHeight: size.cellHeight,
+      cellWidth: geometry.cellWidth,
+      cellHeight: geometry.cellHeight,
       color: nativeCrosshair.color,
       markers: nativeCrosshair.markers?.map((marker) => ({
-        pixelY: scaleLocalPixelCoordinate(marker.pixelY, nativeBitmap.height, size.pixelHeight) ?? 0,
+        pixelY: scaleLocalPixelCoordinate(marker.pixelY, nativeBitmap.height, geometry.pixelHeight) ?? 0,
         color: marker.color,
       })),
     });
@@ -245,16 +164,15 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
     renderer.requestRender();
   }, [
     crosshairSurfaceIds,
+    geometry,
     nativeCrosshair,
     nativeBitmap,
     nativeSurfaceManager,
     nativeSurfacesEnabled,
     paneId,
     renderer,
-    surfaceId,
-    target,
   ]);
 
-  const showFallback = !nativeSurfacesEnabled || !target || !nativeBitmap;
+  const showFallback = !nativeSurfacesEnabled || !geometry || !nativeBitmap;
   return createElement("box" as any, { ...props, ref: setRenderableRef }, showFallback ? children as ReactNode : null);
 });
