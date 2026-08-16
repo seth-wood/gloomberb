@@ -379,14 +379,15 @@ class LivePlaybackSession implements PlaybackSession {
         audio: this.frameSource?.audio,
         fps: this.frameSource?.fps,
       });
-    } catch {
+    } catch (cause) {
       if (generation !== this.generation) return;
+      const message = cause instanceof Error ? cause.message : String(cause);
       if (nextState === "stalled") {
         this.setState("stalled");
         this.schedulePipelineRetry(generation);
         return;
       }
-      this.fail(PLAYBACK_UNEXPECTED_FAILURE_MESSAGE);
+      this.fail(message || PLAYBACK_UNEXPECTED_FAILURE_MESSAGE);
       return;
     }
     this.pipelineRetryTask?.cancel();

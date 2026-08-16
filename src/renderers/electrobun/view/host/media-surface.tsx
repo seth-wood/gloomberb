@@ -1,9 +1,13 @@
 /** @jsxImportSource react */
 import Hls from "hls.js";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { LIVE_STREAM_RENEWAL_MARGIN_MS, type PlaybackSessionState } from "../../../../types/media";
 import type { MediaSurfaceHandle, MediaSurfaceProps } from "../../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
+
+function showsPosterState(state: PlaybackSessionState): boolean {
+  return state === "idle" || state === "starting" || state === "failed";
+}
 
 export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(function WebMediaSurface(rawProps, forwardedRef) {
   const {
@@ -18,6 +22,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     renewLiveStream,
     mediaHandleRef,
     onPlaybackStateChange,
+    onStopReason,
     onMutedChange,
     onWarning: _onWarning,
     onError,
@@ -34,41 +39,81 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     renewLiveStream?: MediaSurfaceProps["renewLiveStream"];
     mediaHandleRef?: MediaSurfaceProps["mediaHandleRef"];
     onPlaybackStateChange?: (state: PlaybackSessionState) => void;
+    onStopReason?: MediaSurfaceProps["onStopReason"];
     onMutedChange?: (muted: boolean) => void;
     onError?: (message: string) => void;
   };
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const wantsPlaybackRef = useRef(autoPlay);
+  const [wantsPlayback, setWantsPlayback] = useState(autoPlay);
   const [failed, setFailed] = useState(false);
+  const [sessionState, setSessionState] = useState<PlaybackSessionState>(autoPlay ? "starting" : "idle");
   const mediaSrc = typeof src === "string" ? src.trim() : "";
   const baseStyle = commonStyle(props);
+  const showPoster = showsPosterState(sessionState);
+
+  const tearDownPlayback = useCallback(() => {
+    const video = videoRef.current;
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+  }, []);
 
   useImperativeHandle(forwardedRef, () => videoRef.current as HTMLVideoElement, []);
   useImperativeHandle(mediaHandleRef, (): MediaSurfaceHandle => ({
     async play() {
-      if (videoRef.current) await videoRef.current.play();
+      wantsPlaybackRef.current = true;
+      setWantsPlayback(true);
     },
     pause() {
-      videoRef.current?.pause();
+      wantsPlaybackRef.current = false;
+      setWantsPlayback(false);
+      tearDownPlayback();
+      setSessionState("stopped");
+      onPlaybackStateChange?.("stopped");
+      onStopReason?.(null);
     },
     async toggle() {
-      const video = videoRef.current;
-      if (!video) return;
-      if (video.paused) {
-        await video.play();
-      } else {
-        video.pause();
+      if (wantsPlaybackRef.current) {
+        wantsPlaybackRef.current = false;
+        setWantsPlayback(false);
+        tearDownPlayback();
+        setSessionState("stopped");
+        onPlaybackStateChange?.("stopped");
+        onStopReason?.(null);
+        return;
       }
+      wantsPlaybackRef.current = true;
+      setWantsPlayback(true);
     },
     toggleMuted() {
       const video = videoRef.current;
       if (!video) return muted;
       video.muted = !video.muted;
+      onMutedChange?.(video.muted);
       return video.muted;
     },
-  }), [muted]);
+  }), [muted, onMutedChange, onPlaybackStateChange, onStopReason, tearDownPlayback]);
 
   useEffect(() => {
-    if (!liveStream || !renewLiveStream) return;
+    wantsPlaybackRef.current = wantsPlayback;
+  }, [wantsPlayback]);
+
+  useEffect(() => {
+    if (!wantsPlayback) {
+      setSessionState("idle");
+      onPlaybackStateChange?.("idle");
+      onStopReason?.(null);
+    }
+  }, [onPlaybackStateChange, onStopReason, wantsPlayback]);
+
+  useEffect(() => {
+    if (!liveStream || !renewLiveStream || !wantsPlayback) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -78,7 +123,10 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       timer = setTimeout(() => {
         void renewLiveStream(current).then((next) => {
           if (!active) return;
-          if (next.manifestUrl !== current.manifestUrl) onPlaybackStateChange?.("stalled");
+          if (next.manifestUrl !== current.manifestUrl) {
+            setSessionState("stalled");
+            onPlaybackStateChange?.("stalled");
+          }
           schedule(next);
         }).catch(() => {
           if (active) schedule(current, 5_000);
@@ -91,34 +139,44 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [liveStream, onPlaybackStateChange, renewLiveStream]);
+  }, [liveStream, onPlaybackStateChange, renewLiveStream, wantsPlayback]);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !mediaSrc) {
-      onPlaybackStateChange?.("idle");
+    if (!video || !mediaSrc || !wantsPlayback) {
       return;
     }
 
     setFailed(false);
+    setSessionState("starting");
     onPlaybackStateChange?.("starting");
     let hls: Hls | null = null;
-
     let active = true;
+
     const fail = (message: string) => {
       if (!active) return;
       setFailed(true);
+      setSessionState("failed");
       onPlaybackStateChange?.("failed");
       onError?.(message);
     };
-    const handlePlaying = () => onPlaybackStateChange?.("playing");
-    const handlePause = () => onPlaybackStateChange?.("stopped");
-    const handleEnded = () => onPlaybackStateChange?.("stopped");
-    const handleWaiting = () => onPlaybackStateChange?.("stalled");
+    const handlePlaying = () => {
+      setSessionState("playing");
+      onPlaybackStateChange?.("playing");
+    };
+    const handleEnded = () => {
+      setSessionState("stopped");
+      onPlaybackStateChange?.("stopped");
+      onStopReason?.(null);
+    };
+    const handleWaiting = () => {
+      setSessionState("stalled");
+      onPlaybackStateChange?.("stalled");
+    };
     const handleVolumeChange = () => onMutedChange?.(video.muted);
     const handleError = () => fail("The live stream could not be played.");
+
     video.addEventListener("playing", handlePlaying);
-    video.addEventListener("pause", handlePause);
     video.addEventListener("ended", handleEnded);
     video.addEventListener("waiting", handleWaiting);
     video.addEventListener("volumechange", handleVolumeChange);
@@ -128,9 +186,12 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     onMutedChange?.(video.muted);
 
     const startPlayback = () => {
-      if (!autoPlay) return;
       void video.play().catch(() => {
-        if (active) onPlaybackStateChange?.("stopped");
+        if (active) {
+          setSessionState("stopped");
+          onPlaybackStateChange?.("stopped");
+          onStopReason?.(null);
+        }
       });
     };
 
@@ -144,6 +205,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         enableWorker: true,
         lowLatencyMode: true,
       });
+      hlsRef.current = hls;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
         fail(data.details ? `Stream playback failed: ${data.details}` : "Stream playback failed.");
@@ -158,8 +220,8 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     return () => {
       active = false;
       hls?.destroy();
+      hlsRef.current = null;
       video.removeEventListener("playing", handlePlaying);
-      video.removeEventListener("pause", handlePause);
       video.removeEventListener("ended", handleEnded);
       video.removeEventListener("waiting", handleWaiting);
       video.removeEventListener("volumechange", handleVolumeChange);
@@ -168,7 +230,23 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.removeAttribute("src");
       video.load();
     };
-  }, [autoPlay, mediaSrc, onError, onMutedChange, onPlaybackStateChange, playbackGeneration]);
+  }, [mediaSrc, muted, onError, onMutedChange, onPlaybackStateChange, onStopReason, playbackGeneration, wantsPlayback]);
+
+  useEffect(() => {
+    if (!wantsPlayback || !mediaSrc) return;
+    const video = videoRef.current;
+    const hls = hlsRef.current;
+    if (!video) return;
+    if (hls) {
+      hls.loadSource(mediaSrc);
+      return;
+    }
+    if (video.canPlayType("application/vnd.apple.mpegurl") && video.getAttribute("src") !== mediaSrc) {
+      video.src = mediaSrc;
+      video.load();
+      void video.play().catch(() => {});
+    }
+  }, [mediaSrc, wantsPlayback]);
 
   return (
     <div
@@ -183,14 +261,13 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
     >
       {mediaSrc && !failed ? (
         <video
-          key={`${mediaSrc}:${playbackGeneration}`}
+          key={`playback:${playbackGeneration}`}
           ref={videoRef}
           aria-label={title || "Live TV stream"}
           title={title}
-          poster={poster}
+          poster={showPoster ? poster : undefined}
           controls
           playsInline
-          autoPlay={autoPlay}
           muted={muted}
           style={{
             width: "100%",

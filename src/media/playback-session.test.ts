@@ -154,6 +154,26 @@ async function startPlaying(
 }
 
 describe("playback session registry", () => {
+  test("reports a missing ffmpeg install instead of a generic playback failure", async () => {
+    const clock = createManualClock();
+    const registry = createPlaybackSessionRegistry({
+      now: clock.now,
+      schedule: clock.schedule,
+      startFrameReader: () => {
+        throw new Error("ffmpeg is required for terminal TV playback. Install ffmpeg and try again.");
+      },
+    });
+    registries.push(registry);
+    const session = await registry.start({
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    expect(session.state).toBe("failed");
+    expect(session.failureMessage).toContain("ffmpeg is required");
+  });
+
   test("starts a generated frame source instead of the Live Stream manifest", async () => {
     const { registry, starts } = createHarness();
 

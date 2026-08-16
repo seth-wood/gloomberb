@@ -4,6 +4,7 @@ import type { AppNotificationRequest } from "../types/plugin";
 import type {
   LiveStreamResolveRequest,
   PlaybackSessionState,
+  PlaybackStopReason,
   ResolvedLiveStream,
 } from "../types/media";
 import type { AsciiFontName } from "./ascii-font";
@@ -254,6 +255,7 @@ export interface MediaSurfaceProps extends BoxProps {
   playbackGeneration?: number;
   mediaHandleRef?: Ref<MediaSurfaceHandle>;
   onPlaybackStateChange?: (state: PlaybackSessionState) => void;
+  onStopReason?: (reason: PlaybackStopReason | null) => void;
   onMutedChange?: (muted: boolean) => void;
   onWarning?: (message: string | null) => void;
   onError?: (message: string) => void;

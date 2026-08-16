@@ -146,3 +146,68 @@ test("restarts playback when playbackGeneration bumps while the manifest URL is 
 
   expect(states.filter((state) => state === "starting").length).toBeGreaterThan(startingCount);
 });
+
+test("stays idle until play is requested", async () => {
+  const { WebMediaSurface } = await import("./media-surface");
+  const stream = liveStream();
+  const states: string[] = [];
+  const mediaRef: { current: import("../../../../ui/host").MediaSurfaceHandle | null } = { current: null };
+
+  container = testWindow.document.createElement("div") as unknown as HTMLElement;
+  testWindow.document.body.appendChild(container as never);
+  root = createRoot(container);
+  await runAct(async () => {
+    root!.render(
+      <WebMediaSurface
+        src={stream.manifestUrl}
+        liveStream={stream}
+        mediaHandleRef={mediaRef}
+        onPlaybackStateChange={(state) => states.push(state)}
+      />,
+    );
+  });
+  await runAct(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  expect(states).toContain("idle");
+  expect(states).not.toContain("starting");
+  expect(container.querySelector("video")?.getAttribute("src")).toBeNull();
+
+  await runAct(async () => {
+    await mediaRef.current?.play();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  expect(states).toContain("starting");
+});
+
+test("stopping playback tears down the stream instead of pausing", async () => {
+  const { WebMediaSurface } = await import("./media-surface");
+  const stream = liveStream();
+  const mediaRef: { current: import("../../../../ui/host").MediaSurfaceHandle | null } = { current: null };
+
+  container = testWindow.document.createElement("div") as unknown as HTMLElement;
+  testWindow.document.body.appendChild(container as never);
+  root = createRoot(container);
+  await runAct(async () => {
+    root!.render(
+      <WebMediaSurface
+        src={stream.manifestUrl}
+        liveStream={stream}
+        mediaHandleRef={mediaRef}
+      />,
+    );
+  });
+  await runAct(async () => {
+    await mediaRef.current?.play();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  expect(container.querySelector("video")?.getAttribute("src")).toBe(stream.manifestUrl);
+
+  await runAct(async () => {
+    mediaRef.current?.pause();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+  expect(container.querySelector("video")?.getAttribute("src")).toBeNull();
+});

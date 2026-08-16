@@ -10,8 +10,9 @@ import type {
 import type { PlaybackSessionState, PlaybackStopReason } from "../../types/media";
 import { PLAYBACK_UNEXPECTED_FAILURE_MESSAGE } from "../../media/playback-session";
 import { getNativeSurfaceManager } from "../../components/chart/native/surface/manager";
+import { PaneInstanceProvider } from "../../state/app/context";
 import { createOpenTuiTestRoot } from "./test-utils";
-import { OpenTuiMediaSurface } from "./media-surface";
+import { OpenTuiMediaSurface, resetOpenTuiMediaSurfaceTestState } from "./media-surface";
 
 let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
 let root: ReturnType<typeof createOpenTuiTestRoot> | undefined;
@@ -134,6 +135,7 @@ async function flushFrames(delayMs = 0): Promise<void> {
 }
 
 afterEach(async () => {
+  resetOpenTuiMediaSurfaceTestState();
   if (root) {
     await act(async () => {
       root!.unmount();
@@ -396,36 +398,48 @@ describe("OpenTUI Media Surface", () => {
     expect(warnings).toContain("Audio is unavailable; playing silent video.");
   });
 
-  test("resumes playback after displacement when the displacing surface closes", async () => {
+  test("does not resume playback after displacement until play is requested again", async () => {
     actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     testSetup = await createTestRenderer({ width: 40, height: 12 });
     setKittySupport(true);
     root = createOpenTuiTestRoot(testSetup.renderer);
     const harness = createRegistryHarness();
 
-    act(() => {
-      root!.render(
+    function Harness({ showSecond }: { showSecond: boolean }) {
+      return (
         <>
-          <OpenTuiMediaSurface
-            src="generated:test-pattern"
-            autoPlay
-            muted
-            width={20}
-            height={6}
-            sessionRegistry={harness.registry}
-            frameIntervalMs={10}
-          />
-          <OpenTuiMediaSurface
-            src="generated:test-pattern"
-            autoPlay
-            muted
-            width={20}
-            height={6}
-            sessionRegistry={harness.registry}
-            frameIntervalMs={10}
-          />
-        </>,
+          <PaneInstanceProvider paneId="tv-pane-primary">
+            <OpenTuiMediaSurface
+              key="primary"
+              src="generated:test-pattern"
+              autoPlay
+              muted
+              width={20}
+              height={6}
+              sessionRegistry={harness.registry}
+              frameIntervalMs={10}
+            />
+          </PaneInstanceProvider>
+          {showSecond ? (
+            <PaneInstanceProvider paneId="tv-pane-secondary">
+              <OpenTuiMediaSurface
+                key="secondary"
+                src="generated:test-pattern"
+                autoPlay
+                muted
+                width={20}
+                height={6}
+                sessionRegistry={harness.registry}
+                frameIntervalMs={10}
+              />
+            </PaneInstanceProvider>
+          ) : null}
+        </>
       );
+    }
+
+    act(() => {
+      root!.render(<Harness showSecond />);
     });
     await flushFrames();
 
@@ -433,22 +447,12 @@ describe("OpenTUI Media Surface", () => {
     expect(harness.stops).toContain("displaced");
 
     act(() => {
-      root!.render(
-        <OpenTuiMediaSurface
-          src="generated:test-pattern"
-          autoPlay
-          muted
-          width={20}
-          height={6}
-          sessionRegistry={harness.registry}
-          frameIntervalMs={10}
-        />,
-      );
+      root!.render(<Harness showSecond={false} />);
     });
     await flushFrames(30);
 
-    expect(harness.starts).toHaveLength(3);
-    expect(harness.current).not.toBeNull();
+    expect(harness.starts).toHaveLength(2);
+    expect(harness.stops).toContain("displaced");
   });
 
   test("restarts playback when playbackGeneration bumps while the session is healthy", async () => {
@@ -664,6 +668,38 @@ describe("OpenTUI Media Surface", () => {
     expect(mediaRef.current?.toggleMuted()).toBe(true);
     expect(harness.mutedCalls).toEqual([false, true]);
     expect(mutedStates).toEqual([false, true]);
+  });
+
+  test("does not start playback until play is requested", async () => {
+    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    testSetup = await createTestRenderer({ width: 40, height: 12 });
+    setKittySupport(true);
+    root = createOpenTuiTestRoot(testSetup.renderer);
+    const harness = createRegistryHarness();
+    const mediaRef: { current: import("../../ui").MediaSurfaceHandle | null } = { current: null };
+
+    act(() => {
+      root!.render(
+        <OpenTuiMediaSurface
+          src="generated:test-pattern"
+          muted
+          width={20}
+          height={6}
+          sessionRegistry={harness.registry}
+          frameIntervalMs={60_000}
+          mediaHandleRef={mediaRef}
+        />,
+      );
+    });
+    await flushFrames();
+    expect(harness.starts).toHaveLength(0);
+
+    await act(async () => {
+      await mediaRef.current?.play();
+      await testSetup!.renderOnce();
+    });
+    await flushFrames();
+    expect(harness.starts).toHaveLength(1);
   });
 
   test("does not show kitty fallback text while awaiting the first frame", async () => {

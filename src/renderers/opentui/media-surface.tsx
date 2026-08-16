@@ -20,8 +20,9 @@ import {
 } from "../../media/playback-session";
 import { TERMINAL_VIDEO_FPS_CEILING } from "../../media/frame-reader";
 import { useOptionalPaneInstanceId } from "../../state/app/context";
-import type { ResolvedLiveStream } from "../../types/media";
+import type { PlaybackSessionState, PlaybackStopReason, ResolvedLiveStream } from "../../types/media";
 import { useNativeRenderer, type MediaSurfaceHandle, type MediaSurfaceProps } from "../../ui";
+import { loadOpenTuiImageBitmap } from "./image/loader";
 import {
   resolveCellInsets,
   useKittySupport,
@@ -33,6 +34,8 @@ import {
 const TEST_PATTERN_SOURCE = "generated:test-pattern";
 const TEST_PATTERN_FILTER = `testsrc2=rate=${TERMINAL_VIDEO_FPS_CEILING}`;
 const FRAME_INTERVAL_MS = Math.ceil(1000 / TERMINAL_VIDEO_FPS_CEILING);
+const KITTY_REQUIRED_MESSAGE = "Kitty graphics are required for video.";
+const displacedUntilPlay = new Set<string>();
 let nextMediaSurfaceId = 1;
 
 export interface OpenTuiMediaSurfaceProps extends MediaSurfaceProps {
@@ -92,6 +95,14 @@ function sessionAcceptsSurfaceControl(session: PlaybackSession): boolean {
   }
 }
 
+function showsPosterState(state: PlaybackSessionState): boolean {
+  return state === "idle" || state === "starting" || state === "failed";
+}
+
+export function resetOpenTuiMediaSurfaceTestState(): void {
+  displacedUntilPlay.clear();
+}
+
 export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>(function OpenTuiMediaSurface(
   rawProps,
   forwardedRef,
@@ -100,6 +111,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     children,
     src,
     title,
+    poster,
     autoPlay = false,
     muted = false,
     liveStream,
@@ -107,6 +119,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     playbackGeneration = 0,
     mediaHandleRef,
     onPlaybackStateChange,
+    onStopReason,
     onMutedChange,
     onWarning,
     onError,
@@ -117,6 +130,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     children?: ReactNode;
     src?: string;
     title?: string;
+    poster?: string;
     autoPlay?: boolean;
     muted?: boolean;
     liveStream?: ResolvedLiveStream;
@@ -124,6 +138,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     playbackGeneration?: number;
     mediaHandleRef?: Ref<MediaSurfaceHandle>;
     onPlaybackStateChange?: MediaSurfaceProps["onPlaybackStateChange"];
+    onStopReason?: MediaSurfaceProps["onStopReason"];
     onMutedChange?: MediaSurfaceProps["onMutedChange"];
     onWarning?: MediaSurfaceProps["onWarning"];
     onError?: MediaSurfaceProps["onError"];
@@ -133,8 +148,9 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   const renderer = useNativeRenderer();
   const paneId = useOptionalPaneInstanceId();
   const registry = sessionRegistry ?? getPlaybackSessionRegistry();
-  const surfaceId = useRef(`opentui-media:${nextMediaSurfaceId++}`).current;
+  const surfaceId = paneId ? `opentui-media:${paneId}` : useRef(`opentui-media:${nextMediaSurfaceId++}`).current;
   const mediaSrc = typeof src === "string" ? src.trim() : "";
+  const posterSrc = typeof poster === "string" ? poster.trim() : "";
   const renderableRef = useRef<NativeSurfaceRenderableNode | null>(null);
   const sessionRef = useRef<PlaybackSession | null>(null);
   const sessionSourceRef = useRef<string | null>(null);
@@ -145,6 +161,8 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   const sessionUnsubscribeRef = useRef<(() => void) | null>(null);
   const reportedFailureRef = useRef<string | null>(null);
   const reportedWarningRef = useRef<string | null>(null);
+  const displacedRef = useRef(false);
+  const autoPlayAppliedRef = useRef(false);
   const mountedRef = useRef(true);
   const enabledRef = useRef(autoPlay);
   const mediaSrcRef = useRef(mediaSrc);
@@ -152,7 +170,9 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   const mutedRef = useRef(muted);
   const frameSequenceRef = useRef(0);
   const [enabled, setEnabled] = useState(autoPlay);
+  const [playbackState, setPlaybackState] = useState<PlaybackSessionState>(autoPlay ? "starting" : "idle");
   const [bitmapState, setBitmapState] = useState<{ bitmap: NativeChartBitmap; key: string } | null>(null);
+  const [posterBitmap, setPosterBitmap] = useState<{ bitmap: NativeChartBitmap; key: string } | null>(null);
   const kittySupport = useKittySupport(renderer);
 
   const setRenderableRef = useCallback((node: unknown) => {
@@ -167,27 +187,39 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     insets: resolveCellInsets(props),
   });
 
-  const detachSession = useCallback(() => {
+  const detachSession = useCallback((clearVideo = true) => {
     sessionUnsubscribeRef.current?.();
     sessionUnsubscribeRef.current = null;
     sessionRef.current = null;
     sessionSourceRef.current = null;
     boundPlaybackGenerationRef.current = null;
-    setBitmapState(null);
+    if (clearVideo) setBitmapState(null);
   }, []);
 
-  const stopSession = useCallback(async () => {
+  const stopSession = useCallback(async (reason: PlaybackStopReason = "pane-close") => {
     reportedFailureRef.current = null;
     reportedWarningRef.current = null;
     const session = sessionRef.current;
     detachSession();
-    if (session) await session.stop("pane-close");
+    if (session) await session.stop(reason);
+    setPlaybackState("stopped");
     onPlaybackStateChange?.("stopped");
+    onStopReason?.(reason === "pane-close" ? null : reason);
     onWarning?.(null);
-  }, [detachSession, onPlaybackStateChange, onWarning]);
+  }, [detachSession, onPlaybackStateChange, onStopReason, onWarning]);
 
   const syncSessionFeedback = useCallback((session: PlaybackSession) => {
+    setPlaybackState(session.state);
     onPlaybackStateChange?.(session.state);
+    if (session.state === "stopped") {
+      onStopReason?.(session.stopReason);
+      if (session.stopReason === "displaced") {
+        displacedRef.current = true;
+        displacedUntilPlay.add(surfaceId);
+        enabledRef.current = false;
+        setEnabled(false);
+      }
+    }
     const warning = session.warning;
     if (warning !== reportedWarningRef.current) {
       reportedWarningRef.current = warning;
@@ -202,14 +234,14 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     reportedFailureRef.current = message;
     setBitmapState(null);
     onError?.(message);
-  }, [onError, onPlaybackStateChange, onWarning]);
+  }, [onError, onPlaybackStateChange, onStopReason, onWarning]);
 
   const bindSession = useCallback((session: PlaybackSession) => {
     sessionUnsubscribeRef.current?.();
     sessionUnsubscribeRef.current = session.subscribe(() => {
       if (sessionRef.current === session && !sessionAcceptsSurfaceControl(session)) {
         syncSessionFeedback(session);
-        detachSession();
+        detachSession(session.state !== "stalled");
         return;
       }
       syncSessionFeedback(session);
@@ -219,18 +251,8 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
 
   const startSessionRef = useRef<(() => Promise<void>) | null>(null);
 
-  const maybeResumePlayback = useCallback(() => {
-    if (!geometry || !mediaSrc || kittySupport !== true || !enabledRef.current || !mountedRef.current) return;
-    if (sessionRef.current || startInFlightRef.current || registry.current) return;
-    const start = startSessionRef.current;
-    if (start) void start();
-  }, [geometry, kittySupport, mediaSrc, registry]);
-
   const pullLatestFrame = useCallback((session = sessionRef.current) => {
-    if (!session) {
-      maybeResumePlayback();
-      return;
-    }
+    if (!session) return;
     const frame = session.takeLatestFrame();
     syncSessionFeedback(session);
     if (!frame || session.state === "failed") return;
@@ -239,7 +261,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
       bitmap: frame,
       key: `${session.id}:${frameSequenceRef.current}:${frame.width}x${frame.height}`,
     });
-  }, [maybeResumePlayback, syncSessionFeedback]);
+  }, [syncSessionFeedback]);
 
   const resolveOwnedSession = useCallback((): PlaybackSession | null => {
     const bound = sessionRef.current;
@@ -249,7 +271,18 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   }, [registry, surfaceId]);
 
   const startSession = useCallback(async () => {
-    if (!geometry || !mediaSrc || kittySupport !== true || !enabledRef.current) return;
+    if (!geometry || !mediaSrc || !enabledRef.current) return;
+    if (kittySupport === false) {
+      setBitmapState(null);
+      setPlaybackState("failed");
+      onPlaybackStateChange?.("failed");
+      onError?.(KITTY_REQUIRED_MESSAGE);
+      enabledRef.current = false;
+      setEnabled(false);
+      return;
+    }
+    if (kittySupport !== true) return;
+
     const ownedSession = resolveOwnedSession();
     if (ownedSession && boundPlaybackGenerationRef.current !== playbackGenerationRef.current) {
       detachSession();
@@ -264,7 +297,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     ) {
       existing.setSize(geometry.pixelWidth, geometry.pixelHeight);
       existing.setVisible(geometry.visibleRect !== null);
-      existing.setMuted(muted);
+      existing.setMuted(mutedRef.current);
       return;
     }
     if (startInFlightRef.current) {
@@ -282,6 +315,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     const start = (async () => {
       const activeSession = resolveOwnedSession();
       if (activeSession) await activeSession.stop("pane-close");
+      setPlaybackState("starting");
       onPlaybackStateChange?.("starting");
       try {
         const sessionLiveStream = liveStream ?? surfaceLiveStream(requestedSrc, title);
@@ -290,7 +324,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
           liveStream: sessionLiveStream,
           width: geometry.pixelWidth,
           height: geometry.pixelHeight,
-          muted,
+          muted: mutedRef.current,
           visible: geometry.visibleRect !== null,
           frameSource: frameSource(requestedSrc),
           renewLiveStream: requestedSrc !== TEST_PATTERN_SOURCE && renewLiveStream
@@ -304,7 +338,9 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
           || requestedGeneration !== playbackGenerationRef.current
         ) {
           await session.stop("pane-close");
+          setPlaybackState("stopped");
           onPlaybackStateChange?.("stopped");
+          onStopReason?.(null);
           onWarning?.(null);
           return;
         }
@@ -316,8 +352,11 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);
         setBitmapState(null);
+        setPlaybackState("failed");
         onPlaybackStateChange?.("failed");
         onError?.(message);
+        enabledRef.current = false;
+        setEnabled(false);
       }
     })();
     startInFlightRef.current = start;
@@ -332,7 +371,7 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
         startInFlightGenerationRef.current = null;
       }
     }
-  }, [bindSession, detachSession, geometry, kittySupport, liveStream, mediaSrc, muted, onError, onPlaybackStateChange, onWarning, playbackGeneration, pullLatestFrame, registry, renewLiveStream, resolveOwnedSession, surfaceId, title]);
+  }, [bindSession, detachSession, geometry, kittySupport, liveStream, mediaSrc, onError, onPlaybackStateChange, onStopReason, onWarning, playbackGeneration, pullLatestFrame, registry, renewLiveStream, resolveOwnedSession, surfaceId, title]);
   startSessionRef.current = startSession;
 
   useEffect(() => {
@@ -342,32 +381,36 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   }, [mediaSrc, muted, playbackGeneration]);
 
   useEffect(() => {
-    if (autoPlay) {
-      enabledRef.current = true;
-      setEnabled(true);
+    if (!autoPlay || autoPlayAppliedRef.current || displacedRef.current || displacedUntilPlay.has(surfaceId)) return;
+    autoPlayAppliedRef.current = true;
+    enabledRef.current = true;
+    setEnabled(true);
+  }, [autoPlay, surfaceId]);
+
+  useEffect(() => {
+    if (displacedUntilPlay.has(surfaceId)) {
+      displacedRef.current = true;
+      enabledRef.current = false;
+      setEnabled(false);
     }
+  }, [surfaceId]);
+
+  useEffect(() => {
     const owned = resolveOwnedSession();
     if (
       boundPlaybackGenerationRef.current !== null
       && boundPlaybackGenerationRef.current !== playbackGenerationRef.current
       && owned
+      && enabledRef.current
     ) {
       detachSession();
       void owned.stop("pane-close");
     }
-  }, [autoPlay, detachSession, playbackGeneration, resolveOwnedSession]);
+  }, [detachSession, playbackGeneration, resolveOwnedSession]);
 
   useEffect(() => {
-    enabledRef.current = autoPlay;
-    setEnabled(autoPlay);
-  }, [autoPlay]);
-
-  useEffect(() => {
-    enabledRef.current = enabled;
-  }, [enabled]);
-
-  useEffect(() => {
-    if (kittySupport !== true || !enabled || !mediaSrc) {
+    if (!enabled || displacedRef.current || displacedUntilPlay.has(surfaceId)) return;
+    if (kittySupport !== true || !mediaSrc) {
       if (sessionRef.current) void stopSession();
       return;
     }
@@ -383,21 +426,50 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
   }, [geometry, muted]);
 
   useEffect(() => {
+    if (!posterSrc || !geometry || !showsPosterState(playbackState) || bitmapState) {
+      setPosterBitmap(null);
+      return;
+    }
+    let cancelled = false;
+    const posterKey = `${posterSrc}\ncontain\n${geometry.pixelWidth}x${geometry.pixelHeight}`;
+    void loadOpenTuiImageBitmap(posterSrc, {
+      width: geometry.pixelWidth,
+      height: geometry.pixelHeight,
+      objectFit: "contain",
+    }).then((bitmap) => {
+      if (!cancelled) setPosterBitmap({ bitmap, key: posterKey });
+    }).catch(() => {
+      if (!cancelled) setPosterBitmap(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bitmapState, geometry, playbackState, posterSrc]);
+
+  useEffect(() => {
     const timer = setInterval(pullLatestFrame, frameIntervalMs);
     return () => clearInterval(timer);
   }, [frameIntervalMs, pullLatestFrame]);
 
   useEffect(() => {
+    if (!autoPlay && playbackState === "idle") {
+      onPlaybackStateChange?.("idle");
+    }
+  }, [autoPlay, onPlaybackStateChange, playbackState]);
+
+  useEffect(() => {
     return () => {
       mountedRef.current = false;
       const session = sessionRef.current;
-      detachSession();
       if (session) void session.stop("pane-close");
+      detachSession();
     };
   }, [detachSession]);
 
   useImperativeHandle(mediaHandleRef, (): MediaSurfaceHandle => ({
     async play() {
+      displacedRef.current = false;
+      displacedUntilPlay.delete(surfaceId);
       enabledRef.current = true;
       setEnabled(true);
     },
@@ -407,11 +479,16 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
       void stopSession();
     },
     async toggle() {
-      setEnabled((current) => {
-        const next = !current;
-        enabledRef.current = next;
-        return next;
-      });
+      if (enabledRef.current) {
+        enabledRef.current = false;
+        setEnabled(false);
+        await stopSession();
+        return;
+      }
+      displacedRef.current = false;
+      displacedUntilPlay.delete(surfaceId);
+      enabledRef.current = true;
+      setEnabled(true);
     },
     toggleMuted() {
       const nextMuted = !mutedRef.current;
@@ -420,18 +497,20 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
       onMutedChange?.(nextMuted);
       return nextMuted;
     },
-  }), [onMutedChange, stopSession]);
+  }), [onMutedChange, stopSession, surfaceId]);
+
+  const publishedBitmap = bitmapState ?? (showsPosterState(playbackState) ? posterBitmap : null);
 
   useNativeSurfacePublication({
     renderer,
     surfaceId,
     paneId,
-    surface: geometry?.visibleRect && bitmapState
+    surface: geometry?.visibleRect && publishedBitmap
       ? {
         rect: geometry.rect,
         visibleRect: geometry.visibleRect,
-        bitmap: bitmapState.bitmap,
-        bitmapKey: bitmapState.key,
+        bitmap: publishedBitmap.bitmap,
+        bitmapKey: publishedBitmap.key,
       }
       : null,
   });
@@ -440,7 +519,10 @@ export const OpenTuiMediaSurface = forwardRef<unknown, OpenTuiMediaSurfaceProps>
     && kittySupport === true
     && geometry
     && !bitmapState
+    && playbackState === "starting"
     && reportedFailureRef.current === null;
-  const showFallback = !awaitingFirstFrame && (kittySupport !== true || !geometry || !bitmapState);
+  const showFallback = !awaitingFirstFrame
+    && !publishedBitmap
+    && (kittySupport === false || !geometry || (enabled && playbackState === "failed"));
   return createElement("box" as any, { ...props, ref: setRenderableRef }, showFallback ? children : null);
 });
