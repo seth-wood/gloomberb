@@ -9,8 +9,10 @@ export const PLAYBACK_RESIZE_DEBOUNCE_MS = 150;
 /** Ask for a fresh Live Stream this far ahead of expiry, matching the resolver's cache margin. */
 export const LIVE_STREAM_RENEWAL_MARGIN_MS = 60_000;
 
-/** Retry a pre-emptive renewal this far after a resolver error, so expiry is not the trigger. */
 const LIVE_STREAM_RENEWAL_RETRY_MS = 5_000;
+
+/** Retry a restart-driven pipeline start this far after startFrameReader throws. */
+export const PLAYBACK_PIPELINE_RESTART_RETRY_MS = 1_000;
 
 interface ScheduledTask {
   cancel(): void;
@@ -44,8 +46,18 @@ export interface StartPlaybackSessionOptions {
 
 export interface PlaybackSessionRegistry {
   readonly current: PlaybackSession | null;
+  /** Binds a services lifetime to this registry; playback survives until every owner releases. */
+  acquire(): void;
+  release(): Promise<void>;
   start(options: StartPlaybackSessionOptions): Promise<PlaybackSession>;
   teardown(): Promise<void>;
+}
+
+export class PlaybackRegistryShutdownError extends Error {
+  constructor() {
+    super("Playback session registry is shutting down.");
+    this.name = "PlaybackRegistryShutdownError";
+  }
 }
 
 export interface PlaybackSessionRegistryOptions {
@@ -76,32 +88,62 @@ export function createPlaybackSessionRegistry(
   };
   let current: LivePlaybackSession | null = null;
   let nextId = 0;
+  let ownerCount = 0;
+  let shuttingDown = false;
+  let startInFlight: Promise<PlaybackSession> | null = null;
+  const runTeardown = async (): Promise<void> => {
+    const sessionToStop = current;
+    if (startInFlight) {
+      await startInFlight.catch(() => {});
+    }
+    if (sessionToStop) await sessionToStop.stop("teardown");
+  };
 
   const registry: PlaybackSessionRegistry = {
     get current() {
       return current;
     },
+    acquire() {
+      if (ownerCount === 0) shuttingDown = false;
+      ownerCount += 1;
+    },
+    async release() {
+      if (ownerCount === 0) return;
+      ownerCount -= 1;
+      if (ownerCount === 0) {
+        shuttingDown = true;
+        await runTeardown();
+      }
+    },
     async start(startOptions) {
-      const displaced = current;
-      current = null;
-      if (displaced) await displaced.stop("displaced");
+      const run = (async (): Promise<PlaybackSession> => {
+        const displaced = current;
+        current = null;
+        if (displaced) await displaced.stop("displaced");
+        if (shuttingDown) throw new PlaybackRegistryShutdownError();
 
-      const session = new LivePlaybackSession({
-        id: `playback-session-${++nextId}`,
-        options: startOptions,
-        deps,
-        onStoppedIfCurrent: (stopped) => {
-          if (current === stopped) current = null;
-        },
-      });
-      current = session;
-      session.begin();
-      return session;
+        const session = new LivePlaybackSession({
+          id: `playback-session-${++nextId}`,
+          options: startOptions,
+          deps,
+          onStoppedIfCurrent: (stopped) => {
+            if (current === stopped) current = null;
+          },
+        });
+        current = session;
+        session.begin();
+        return session;
+      })();
+      startInFlight = run;
+      try {
+        return await run;
+      } finally {
+        if (startInFlight === run) startInFlight = null;
+      }
     },
     async teardown() {
-      const session = current;
-      current = null;
-      if (session) await session.stop("teardown");
+      shuttingDown = true;
+      await runTeardown();
     },
   };
   return registry;
@@ -131,7 +173,9 @@ class LivePlaybackSession implements PlaybackSession {
   private readonly renewLiveStream?: (current: ResolvedLiveStream) => Promise<ResolvedLiveStream>;
   private resizeTask: ScheduledTask | null = null;
   private renewalTask: ScheduledTask | null = null;
+  private pipelineRetryTask: ScheduledTask | null = null;
   private renewing = false;
+  private stopInFlight: Promise<void> | null = null;
 
   constructor(config: {
     id: string;
@@ -204,14 +248,24 @@ class LivePlaybackSession implements PlaybackSession {
   }
 
   async stop(reason: PlaybackStopReason): Promise<void> {
+    if (this.stopInFlight) return this.stopInFlight;
     if (this.hasEnded()) return;
+    this.stopInFlight = this.finishStop(reason);
+    try {
+      await this.stopInFlight;
+    } finally {
+      this.stopInFlight = null;
+    }
+  }
+
+  private async finishStop(reason: PlaybackStopReason): Promise<void> {
     this.generation += 1;
     this.cancelTimers();
-    this.onStoppedIfCurrent(this);
     this._stopReason = reason;
     this._state = "stopped";
     this.notify();
     await this.dropReader();
+    this.onStoppedIfCurrent(this);
   }
 
   begin(): void {
@@ -256,7 +310,6 @@ class LivePlaybackSession implements PlaybackSession {
     }
     switch (cause) {
       case "mute":
-        // Mute is applied when the frame reader starts, so a visible change rejoins at the Live Edge.
         if (this.reader) void this.restartPipeline();
         return;
       case "visibility":
@@ -272,6 +325,8 @@ class LivePlaybackSession implements PlaybackSession {
     this.generation += 1;
     this.resizeTask?.cancel();
     this.resizeTask = null;
+    this.pipelineRetryTask?.cancel();
+    this.pipelineRetryTask = null;
     this._stopReason = "hidden-muted";
     this.setState("stopped");
     await this.dropReader();
@@ -296,11 +351,14 @@ class LivePlaybackSession implements PlaybackSession {
       if (generation !== this.generation) return;
       if (nextState === "stalled") {
         this.setState("stalled");
+        this.schedulePipelineRetry(generation);
         return;
       }
       this.setState("failed");
       return;
     }
+    this.pipelineRetryTask?.cancel();
+    this.pipelineRetryTask = null;
     this._stopReason = null;
     this.setState(nextState);
     const reader = this.reader;
@@ -311,6 +369,15 @@ class LivePlaybackSession implements PlaybackSession {
       this.reader = null;
       this.setState("failed");
     });
+  }
+
+  private schedulePipelineRetry(generation: number): void {
+    this.pipelineRetryTask?.cancel();
+    this.pipelineRetryTask = this.deps.schedule(() => {
+      this.pipelineRetryTask = null;
+      if (this.generation !== generation || this.hasEnded() || !this.shouldRunPipeline()) return;
+      this.startPipeline("stalled");
+    }, PLAYBACK_PIPELINE_RESTART_RETRY_MS);
   }
 
   private async restartPipeline(): Promise<void> {
@@ -354,6 +421,8 @@ class LivePlaybackSession implements PlaybackSession {
     this.resizeTask = null;
     this.renewalTask?.cancel();
     this.renewalTask = null;
+    this.pipelineRetryTask?.cancel();
+    this.pipelineRetryTask = null;
   }
 
   private setState(state: PlaybackSessionState): void {

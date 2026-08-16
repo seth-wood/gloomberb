@@ -5,14 +5,14 @@ type AsyncInitializer<T> = () => Promise<T>;
 
 async function withCleanup<TContext, TResult>(
   initialize: AsyncInitializer<TContext>,
-  cleanup: (context: TContext) => void,
+  cleanup: (context: TContext) => void | Promise<void>,
   operation: (context: TContext) => TResult | Promise<TResult>,
 ): Promise<TResult> {
   const context = await initialize();
   try {
     return await operation(context);
   } finally {
-    cleanup(context);
+    await cleanup(context);
   }
 }
 

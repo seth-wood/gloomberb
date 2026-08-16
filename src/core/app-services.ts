@@ -25,7 +25,7 @@ export interface AppServices extends AppRuntimeServices {
   pluginRegistry: PluginRegistry;
   newsService: NewsService;
   ready: Promise<void>;
-  destroy(): void;
+  destroy(): Promise<void>;
 }
 
 export function createAppServices({
@@ -81,6 +81,9 @@ export function createAppServices({
   });
   servicesLog.info("create services complete", { pluginCount: plugins.length });
 
+  const playbackRegistry = getPlaybackSessionRegistry();
+  playbackRegistry.acquire();
+
   return {
     persistence,
     tickerRepository,
@@ -90,14 +93,14 @@ export function createAppServices({
     pluginRegistry,
     newsService,
     ready: Promise.all(pluginReadyPromises).then(() => {}),
-    destroy() {
-      void getPlaybackSessionRegistry().teardown();
+    async destroy() {
       setSharedMarketDataCoordinator(null);
       setSharedNewsService(null);
       newsService.stop();
       pluginRegistry.destroy();
       setIbkrPortfolioPerformanceResourceStore(null);
       persistence.close();
+      await playbackRegistry.release();
     },
   };
 }

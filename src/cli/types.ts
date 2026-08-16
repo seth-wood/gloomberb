@@ -22,5 +22,5 @@ export type CliServicesContext = {
   dataProvider: AssetDataRouter;
   persistence: AppPersistence;
   store: TickerRepository;
-  destroy(): void;
+  destroy(): void | Promise<void>;
 };

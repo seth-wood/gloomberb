@@ -196,7 +196,7 @@ class PipeFrameReader implements FrameReader {
     if (this.stopped) return;
 
     const exitCode = await this.source.exited.catch(() => 1);
-    if (exitCode === 0 || !this.config.argvWithAudio || this.audioOutput === "silent") return;
+    if (this.stopped || exitCode === 0 || !this.config.argvWithAudio || this.audioOutput === "silent") return;
 
     this.audioOutput = "silent";
     this.fallbackWarning = SILENT_AUDIO_WARNING;
@@ -210,7 +210,7 @@ class PipeFrameReader implements FrameReader {
     const frameBytes = this.config.width * this.config.height * BYTES_PER_PIXEL;
     const buffer = new Uint8Array(frameBytes);
     let filled = 0;
-    void this.discardStderr();
+    void this.discardStderr(this.stderrReader);
     try {
       while (!this.stopped) {
         const { done, value } = await this.stdoutReader.read();
@@ -231,20 +231,16 @@ class PipeFrameReader implements FrameReader {
           }
         }
       }
-    } catch {
-      // Cancelled during stop, or the producing process closed the pipe.
-    }
+    } catch {}
   }
 
-  private async discardStderr(): Promise<void> {
+  private async discardStderr(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
     try {
       while (true) {
-        const { done } = await this.stderrReader.read();
+        const { done } = await reader.read();
         if (done) break;
       }
-    } catch {
-      // Cancelled during stop.
-    }
+    } catch {}
   }
 
   private async terminateSource(): Promise<void> {

@@ -58,6 +58,9 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
   });
   servicesLog.info("create desktop web services complete", { pluginCount: plugins.length });
 
+  const playbackRegistry = getPlaybackSessionRegistry();
+  playbackRegistry.acquire();
+
   return {
     persistence,
     tickerRepository,
@@ -65,13 +68,13 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     marketData,
     pluginRegistry,
     ready: Promise.all(pluginReadyPromises).then(() => {}),
-    destroy() {
-      void getPlaybackSessionRegistry().teardown();
+    async destroy() {
       setSharedMarketDataCoordinator(null);
       setSharedNewsService(null);
       newsService.stop();
       pluginRegistry.destroy();
       persistence.close();
+      await playbackRegistry.release();
     },
   };
 }

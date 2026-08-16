@@ -3,6 +3,8 @@ import type { FrameReader, RgbaFrame, StartFrameReaderOptions } from "./frame-re
 import {
   createPlaybackSessionRegistry,
   LIVE_STREAM_RENEWAL_MARGIN_MS,
+  PlaybackRegistryShutdownError,
+  PLAYBACK_PIPELINE_RESTART_RETRY_MS,
   PLAYBACK_RESIZE_DEBOUNCE_MS,
   type PlaybackSession,
   type PlaybackSessionRegistry,
@@ -82,8 +84,12 @@ class FakeFrameReader implements FrameReader {
   readonly warning = null;
   private resolveDone: () => void = () => {};
   readonly done: Promise<void>;
+  private releaseStop: (() => void) | null = null;
+  readonly stopGate = new Promise<void>((resolve) => {
+    this.releaseStop = resolve;
+  });
 
-  constructor() {
+  constructor(private readonly slowStop = false) {
     this.done = new Promise<void>((resolve) => {
       this.resolveDone = resolve;
     });
@@ -101,7 +107,12 @@ class FakeFrameReader implements FrameReader {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    if (this.slowStop) await this.stopGate;
     this.resolveDone();
+  }
+
+  completeStop(): void {
+    this.releaseStop?.();
   }
 }
 
@@ -111,16 +122,16 @@ async function flush(): Promise<void> {
   await Promise.resolve();
 }
 
-function createHarness() {
+function createHarness(options: { slowStop?: boolean } = {}) {
   const clock = createManualClock();
   const readers: FakeFrameReader[] = [];
   const starts: StartFrameReaderOptions[] = [];
   const registry = createPlaybackSessionRegistry({
     now: clock.now,
     schedule: clock.schedule,
-    startFrameReader: (options) => {
-      starts.push(options);
-      const reader = new FakeFrameReader();
+    startFrameReader: (startOptions) => {
+      starts.push(startOptions);
+      const reader = new FakeFrameReader(options.slowStop && readers.length === 0);
       readers.push(reader);
       return reader;
     },
@@ -328,6 +339,126 @@ describe("playback session registry", () => {
     expect(session.state).toBe("playing");
   });
 
+  test("teardown keeps the registry occupied until the frame reader finishes stopping", async () => {
+    const { registry, readers } = createHarness({ slowStop: true });
+    await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    const firstReader = readers[0]!;
+
+    const teardownDone = registry.teardown();
+    await flush();
+    expect(registry.current).not.toBeNull();
+    expect(firstReader.stopped).toBe(true);
+    expect(readers).toHaveLength(1);
+
+    const startDone = registry.start({
+      surfaceId: "pane-b",
+      liveStream: liveStream({ videoId: "other", manifestUrl: "https://example.test/other.m3u8" }),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    await flush();
+    expect(readers).toHaveLength(1);
+
+    firstReader.completeStop();
+    await expect(startDone).rejects.toBeInstanceOf(PlaybackRegistryShutdownError);
+    await teardownDone;
+
+    expect(readers).toHaveLength(1);
+    expect(readers[0]!.stopped).toBe(true);
+    expect(registry.current).toBeNull();
+  });
+
+  test("teardown during start displacement waits and suppresses the replacement session", async () => {
+    const { registry, readers } = createHarness({ slowStop: true });
+    await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    const firstReader = readers[0]!;
+
+    const startDone = registry.start({
+      surfaceId: "pane-b",
+      liveStream: liveStream({ videoId: "other", manifestUrl: "https://example.test/other.m3u8" }),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    await flush();
+    expect(firstReader.stopped).toBe(true);
+    expect(readers).toHaveLength(1);
+
+    const teardownDone = registry.teardown();
+    await flush();
+
+    firstReader.completeStop();
+    await expect(startDone).rejects.toBeInstanceOf(PlaybackRegistryShutdownError);
+    await teardownDone;
+
+    expect(readers).toHaveLength(1);
+    expect(registry.current).toBeNull();
+  });
+
+  test("reacquire during release teardown stops only the prior session", async () => {
+    const { registry, readers } = createHarness({ slowStop: true });
+    registry.acquire();
+    await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    const firstReader = readers[0]!;
+
+    const releaseDone = registry.release();
+    await flush();
+    expect(firstReader.stopped).toBe(true);
+
+    registry.acquire();
+    const startDone = registry.start({
+      surfaceId: "pane-b",
+      liveStream: liveStream({ videoId: "other", manifestUrl: "https://example.test/other.m3u8" }),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    await flush();
+
+    firstReader.completeStop();
+    const next = await startDone;
+    readers.at(-1)!.latest = frame();
+    expect(next.takeLatestFrame()).not.toBeNull();
+    await releaseDone;
+
+    expect(next.state).toBe("playing");
+    expect(registry.current).toBe(next);
+    expect(readers[1]!.stopped).toBe(false);
+  });
+
+  test("release only tears down when the last services owner is released", async () => {
+    const { registry, readers } = createHarness();
+    registry.acquire();
+    await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+
+    registry.acquire();
+    await registry.release();
+    expect(readers[0]!.stopped).toBe(false);
+    expect(registry.current).not.toBeNull();
+
+    await registry.release();
+    expect(readers[0]!.stopped).toBe(true);
+    expect(registry.current).toBeNull();
+  });
+
   test("pane close and app teardown stop the process and empty the registry", async () => {
     const { registry, readers } = createHarness();
     const session = await startPlaying(registry, readers, {
@@ -390,6 +521,52 @@ describe("playback session registry", () => {
 
     expect(session.state).toBe("failed");
     expect(registry.current).toBe(session);
+  });
+
+  test("a failed restart retries until the pipeline starts again without reporting failed", async () => {
+    const clock = createManualClock();
+    const readers: FakeFrameReader[] = [];
+    let starts = 0;
+    const registry = createPlaybackSessionRegistry({
+      now: clock.now,
+      schedule: clock.schedule,
+      startFrameReader: () => {
+        starts += 1;
+        if (starts === 2) throw new Error("ffmpeg failed to start");
+        const reader = new FakeFrameReader();
+        readers.push(reader);
+        return reader;
+      },
+    });
+    registries.push(registry);
+
+    const session = await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+    const states: PlaybackSessionState[] = [];
+    session.subscribe(() => {
+      states.push(session.state);
+    });
+
+    session.setSize(8, 4);
+    clock.advance(PLAYBACK_RESIZE_DEBOUNCE_MS);
+    await flush();
+
+    expect(session.state).toBe("stalled");
+    expect(states).not.toContain("failed");
+    expect(readers).toHaveLength(1);
+
+    clock.advance(PLAYBACK_PIPELINE_RESTART_RETRY_MS);
+    await flush();
+
+    expect(readers).toHaveLength(2);
+    readers[1]!.latest = frame();
+    expect(session.takeLatestFrame()).not.toBeNull();
+    expect(session.state).toBe("playing");
+    expect(states).not.toContain("failed");
   });
 });
 

@@ -35,7 +35,7 @@ export interface AppRuntimeServices {
   marketData: MarketDataCoordinator;
   pluginRegistry: PluginRegistry;
   ready: Promise<void>;
-  destroy(): void;
+  destroy(): Promise<void>;
 }
 
 export interface AppServicesFactoryOptions {

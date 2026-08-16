@@ -229,6 +229,85 @@ describe("frame reader", () => {
     if (process.platform === "win32") expect(argv).toContain("wasapi");
   });
 
+  test("stop during an unsuccessful audio exit does not spawn a silent fallback", async () => {
+    let starts = 0;
+    const reader = startFrameReader({
+      url: "https://example.test/live.m3u8",
+      width: WIDTH,
+      height: HEIGHT,
+      fps: 12,
+      audio: "system",
+      spawn: () => {
+        starts += 1;
+        let resolveExit: (code: number) => void = () => {};
+        const exited = new Promise<number>((resolve) => {
+          resolveExit = resolve;
+        });
+        return {
+          pid: starts,
+          stdout: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+          stderr: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+          kill() {
+            resolveExit(1);
+          },
+          exited,
+        } satisfies FrameSourceProcess;
+      },
+    });
+    readers.push(reader);
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await reader.stop();
+    expect(starts).toBe(1);
+  });
+
+  test("audio fallback still produces frames when the first process leaves stderr open", async () => {
+    let starts = 0;
+    const frame = rgbaFrame(9);
+    const reader = startFrameReader({
+      url: "https://example.test/live.m3u8",
+      width: WIDTH,
+      height: HEIGHT,
+      fps: 12,
+      audio: "system",
+      spawn: (argv) => {
+        starts += 1;
+        if (starts === 1) {
+          return {
+            pid: 1,
+            stdout: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close();
+              },
+            }),
+            stderr: new ReadableStream<Uint8Array>({
+              pull() {
+                return new Promise(() => {});
+              },
+            }),
+            kill() {},
+            exited: Promise.resolve(1),
+          } satisfies FrameSourceProcess;
+        }
+        return spawnFromChunks([frame])(argv);
+      },
+    });
+    readers.push(reader);
+
+    await waitForDone(reader.done);
+    expect(starts).toBe(2);
+    expect(reader.takeLatestFrame()?.pixels).toEqual(frame);
+  });
+
   test("retries silently when the process with audio exits unsuccessful", async () => {
     let starts = 0;
     const frame = rgbaFrame(9);

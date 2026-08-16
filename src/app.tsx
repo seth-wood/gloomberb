@@ -451,9 +451,7 @@ export function App({
     });
   }, [config.dataDir, externalPlugins, servicesFactory]);
 
-  useEffect(() => {
-    return () => services.destroy();
-  }, [services]);
+  useEffect(() => () => void services.destroy(), [services]);
 
   const sessionSnapshot = useMemo(() => {
     return resolveAppSessionSnapshot({

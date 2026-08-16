@@ -24,14 +24,14 @@ interface CliServicesOptions {
   externalPlugins?: LoadedExternalPlugin[];
 }
 
-export async function ensureCliServicesReady<T extends { ready: Promise<unknown>; destroy(): void }>(
+export async function ensureCliServicesReady<T extends { ready: Promise<unknown>; destroy(): void | Promise<void> }>(
   services: T,
 ): Promise<T> {
   try {
     await services.ready;
     return services;
   } catch (error) {
-    services.destroy();
+    await services.destroy();
     throw error;
   }
 }

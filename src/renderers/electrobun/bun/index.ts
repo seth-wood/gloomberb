@@ -319,7 +319,7 @@ function disposeWindowScopedResources(windowKey: string): void {
 function teardownServices(): void {
   stopDesktopRemoteControlServer();
   capabilityBridge.disposeAll();
-  services?.destroy();
+  void services?.destroy();
   services = null;
 }
 

@@ -7,12 +7,13 @@ import type { NewsArticle } from "../news/types";
 import { createDefaultConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
 import { createAppServices, type AppServices } from "./app-services";
+import { getPlaybackSessionRegistry } from "../media/playback-session";
 
 let services: AppServices | null = null;
 let dataDir: string | null = null;
 
 afterEach(async () => {
-  services?.destroy();
+  await services?.destroy();
   services = null;
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   dataDir = null;
@@ -63,4 +64,33 @@ test("the router does not re-enter the aggregate news facade", async () => {
 
   expect(fetchCount).toBe(1);
   expect(articles.map((item) => item.id)).toEqual([article.id]);
+});
+
+test("destroy closes persistence before awaiting playback release", async () => {
+  dataDir = await mkdtemp(join(tmpdir(), "gloomberb-destroy-order-"));
+  services = createAppServices({
+    config: createDefaultConfig(dataDir),
+    plugins: [],
+  });
+  await services.ready;
+
+  const events: string[] = [];
+  const registry = getPlaybackSessionRegistry();
+  const baseRelease = registry.release.bind(registry);
+  registry.release = async () => {
+    events.push("release");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await baseRelease();
+  };
+
+  const originalClose = services.persistence.close.bind(services.persistence);
+  services.persistence.close = () => {
+    events.push("persistence");
+    originalClose();
+  };
+
+  const destroyPromise = services.destroy();
+  expect(events).toEqual(["persistence", "release"]);
+  await destroyPromise;
+  services = null;
 });
