@@ -12,6 +12,7 @@ import { debugLog } from "../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../utils/perf-marks";
 import { setIbkrPortfolioPerformanceResourceStore } from "../plugins/ibkr/portfolio-performance";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
+import { getPlaybackSessionRegistry } from "../media/playback-session";
 
 const servicesLog = debugLog.createLogger("services");
 
@@ -90,6 +91,7 @@ export function createAppServices({
     newsService,
     ready: Promise.all(pluginReadyPromises).then(() => {}),
     destroy() {
+      void getPlaybackSessionRegistry().teardown();
       setSharedMarketDataCoordinator(null);
       setSharedNewsService(null);
       newsService.stop();

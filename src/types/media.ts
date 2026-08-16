@@ -10,6 +10,9 @@ export type PlaybackSessionState =
   | "stopped"
   | "failed";
 
+/** Why a Playback Session stopped. Distinct from `failed`, which is a state. */
+export type PlaybackStopReason = "displaced" | "pane-close" | "teardown" | "hidden-muted";
+
 export interface LiveStreamResolveRequest {
   provider: "youtube";
   sourceId: string;

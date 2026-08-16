@@ -4,6 +4,7 @@ import { NewsService } from "../../../news/aggregator";
 import { setSharedNewsService } from "../../../news/hooks";
 import { PluginRegistry } from "../../../plugins/registry";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "../../../core/app-service-ports";
+import { getPlaybackSessionRegistry } from "../../../media/playback-session";
 import { newsProvider } from "../../../capabilities";
 import { debugLog } from "../../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../../utils/perf-marks";
@@ -65,6 +66,7 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     pluginRegistry,
     ready: Promise.all(pluginReadyPromises).then(() => {}),
     destroy() {
+      void getPlaybackSessionRegistry().teardown();
       setSharedMarketDataCoordinator(null);
       setSharedNewsService(null);
       newsService.stop();
