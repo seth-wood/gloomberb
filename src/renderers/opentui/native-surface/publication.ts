@@ -8,7 +8,6 @@ export interface NativeSurfaceContent {
   visibleRect: CellRect;
   bitmap: NativeChartBitmap;
   bitmapKey: string;
-  imageZIndex?: number;
 }
 
 interface NativeSurfacePublicationOptions {
@@ -36,7 +35,6 @@ export function useNativeSurfacePublication({
   const visibleRect = surface?.visibleRect ?? null;
   const bitmap = surface?.bitmap ?? null;
   const bitmapKey = surface?.bitmapKey ?? null;
-  const imageZIndex = surface?.imageZIndex;
 
   useEffect(() => {
     return () => {
@@ -57,8 +55,7 @@ export function useNativeSurfacePublication({
       visibleRect,
       bitmap,
       bitmapKey,
-      ...(imageZIndex === undefined ? {} : { imageZIndex }),
     });
     renderer.requestRender();
-  }, [bitmap, bitmapKey, imageZIndex, manager, paneId, rect, renderer, surfaceId, visibleRect]);
+  }, [bitmap, bitmapKey, manager, paneId, rect, renderer, surfaceId, visibleRect]);
 }
