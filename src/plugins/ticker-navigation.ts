@@ -1,3 +1,5 @@
+import { resolveCollectionForPane } from "../core/state/app/layout";
+import type { AppState } from "../state/app/context";
 import {
   findPaneInstance,
   normalizePaneId,
@@ -6,6 +8,7 @@ import {
   type LayoutConfig,
   type PaneInstanceConfig,
 } from "../types/config";
+import { getCollectionTickersFromConfig } from "./builtin/portfolio-list/pane/data";
 import { isPaneInLayout } from "./pane-manager";
 
 export function resolveTickerNavigationReplacementPane(
@@ -28,6 +31,16 @@ export function resolveFollowBoundTickerResearchCollectionPane(
 ): PaneInstanceConfig | null {
   if (!isFollowBoundTickerResearchPane(instance)) return null;
   return resolveFollowBindingInstance(layout, instance.instanceId, isCollectionPaneInstance) ?? null;
+}
+
+export function isSymbolInCollectionPane(
+  state: Pick<AppState, "config" | "paneState" | "tickers">,
+  collectionPaneInstanceId: string,
+  symbol: string,
+): boolean {
+  const collectionId = resolveCollectionForPane(state as AppState, collectionPaneInstanceId);
+  return getCollectionTickersFromConfig(state.config, state.tickers, collectionId)
+    .some((ticker) => ticker.metadata.ticker === symbol);
 }
 
 export function isFollowBoundTickerResearchPane(instance: PaneInstanceConfig | null | undefined): boolean {

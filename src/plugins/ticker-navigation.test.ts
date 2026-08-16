@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
   createPaneInstance,
+  createDefaultConfig,
   TICKER_RESEARCH_PANE_ID,
   type LayoutConfig,
   type PaneInstanceConfig,
 } from "../types/config";
+import type { AppState } from "../state/app/context";
+import type { TickerRecord } from "../types/ticker";
 import {
   findFixedTickerPaneForSymbol,
   isFollowBoundTickerResearchPane,
+  isSymbolInCollectionPane,
   resolveFollowBoundTickerResearchCollectionPane,
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
@@ -91,6 +95,56 @@ describe("resolveFollowBoundTickerResearchCollectionPane", () => {
     ]);
 
     expect(resolveFollowBoundTickerResearchCollectionPane(layout, layout.instances[0]!)).toBeNull();
+  });
+});
+
+function makeTicker(symbol: string, collectionId: string): TickerRecord {
+  return {
+    metadata: {
+      ticker: symbol,
+      exchange: "NASDAQ",
+      currency: "USD",
+      name: symbol,
+      portfolios: [collectionId],
+      watchlists: [],
+      positions: [],
+      custom: {},
+      tags: [],
+    },
+  };
+}
+
+describe("isSymbolInCollectionPane", () => {
+  test("returns true when the symbol belongs to the pane collection", () => {
+    const config = createDefaultConfig();
+    const state: Pick<AppState, "config" | "paneState" | "tickers"> = {
+      config,
+      paneState: {
+        "portfolio-list:main": { collectionId: "main", cursorSymbol: "AAPL" },
+      },
+      tickers: new Map([
+        ["AAPL", makeTicker("AAPL", "main")],
+        ["MSFT", makeTicker("MSFT", "main")],
+      ]),
+    };
+
+    expect(isSymbolInCollectionPane(state, "portfolio-list:main", "MSFT")).toBe(true);
+  });
+
+  test("returns false when the symbol is outside the active collection", () => {
+    const config = createDefaultConfig();
+    const state: Pick<AppState, "config" | "paneState" | "tickers"> = {
+      config,
+      paneState: {
+        "portfolio-list:main": { collectionId: "main", cursorSymbol: "AAPL" },
+      },
+      tickers: new Map([
+        ["AAPL", makeTicker("AAPL", "main")],
+        ["NVDA", makeTicker("NVDA", "research")],
+      ]),
+    };
+
+    expect(isSymbolInCollectionPane(state, "portfolio-list:main", "NVDA")).toBe(false);
   });
 });
 

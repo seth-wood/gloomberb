@@ -1,5 +1,8 @@
 import { useCallback, type Dispatch } from "react";
-import { resolveFollowBoundTickerResearchCollectionPane } from "../../plugins/ticker-navigation";
+import {
+  isSymbolInCollectionPane,
+  resolveFollowBoundTickerResearchCollectionPane,
+} from "../../plugins/ticker-navigation";
 import {
   createPaneInstance,
   findPaneInstance,
@@ -80,7 +83,10 @@ export function useCommandBarPaneActions({
         currentState.config.layout,
         focusedPane,
       );
-      if (collectionPane) {
+      if (
+        collectionPane
+        && isSymbolInCollectionPane(currentState, collectionPane.instanceId, symbol)
+      ) {
         dispatch({
           type: "UPDATE_PANE_STATE",
           paneId: collectionPane.instanceId,
