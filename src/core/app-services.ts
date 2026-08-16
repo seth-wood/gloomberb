@@ -104,3 +104,14 @@ export function createAppServices({
     },
   };
 }
+
+let pendingDestroy: Promise<void> | null = null;
+
+/** Tracks an in-flight App teardown so process exit can await ffmpeg shutdown. */
+export function trackAppServicesDestroy(destroy: Promise<void>): void {
+  pendingDestroy = destroy;
+}
+
+export async function awaitAppServicesDestroy(): Promise<void> {
+  await pendingDestroy;
+}

@@ -246,9 +246,16 @@ export interface MediaSurfaceProps extends BoxProps {
   poster?: string;
   autoPlay?: boolean;
   muted?: boolean;
+  /** Resolved Live Stream metadata for terminal playback renewal; ignored by desktop web video. */
+  liveStream?: ResolvedLiveStream;
+  /** Re-resolves an expiring Live Stream before playback-session restarts the pipeline. */
+  renewLiveStream?: (current: ResolvedLiveStream) => Promise<ResolvedLiveStream>;
+  /** Bumps restart playback when the source URL is unchanged (for example after refresh). */
+  playbackGeneration?: number;
   mediaHandleRef?: Ref<MediaSurfaceHandle>;
   onPlaybackStateChange?: (state: PlaybackSessionState) => void;
   onMutedChange?: (muted: boolean) => void;
+  onWarning?: (message: string | null) => void;
   onError?: (message: string) => void;
 }
 export interface MediaSurfaceHandle {

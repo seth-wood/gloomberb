@@ -329,6 +329,27 @@ describe("frame reader", () => {
     expect(reader.takeLatestFrame()?.pixels).toEqual(frame);
   });
 
+  test("warns when system audio is unavailable on the platform", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { configurable: true, value: "freebsd" });
+    try {
+      const reader = startFrameReader({
+        url: "https://example.test/live.m3u8",
+        width: WIDTH,
+        height: HEIGHT,
+        fps: 12,
+        audio: "system",
+        spawn: spawnFromChunks([]),
+      });
+      readers.push(reader);
+
+      expect(reader.audio).toBe("silent");
+      expect(reader.warning).toMatch(/silent video/i);
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
+  });
+
   test("retries silently when the process with audio exits unsuccessful", async () => {
     let starts = 0;
     const frame = rgbaFrame(9);

@@ -39,7 +39,7 @@ interface DesktopBackendRequestOptions {
   setServices: (services: AppServices) => void;
   startUpdate: (currentVersion: string) => void;
   syncConfigAccessors: () => void;
-  teardownServices: () => void;
+  teardownServices: () => void | Promise<void>;
 }
 
 async function importDesktopConfig({
@@ -59,7 +59,7 @@ async function importDesktopConfig({
 ): Promise<AppConfig> {
   closeAllDetachedWindows();
   setDesktopWorkspace(null);
-  teardownServices();
+  await teardownServices();
   setCurrentConfig(await importConfig(payload.dataDir, payload.srcPath));
   setServices(createAppServices({
     config: getConfig(),
@@ -124,7 +124,7 @@ export async function handleDesktopBackendRequest(
     case "config.resetAllData":
       closeAllDetachedWindows();
       setDesktopWorkspace(null);
-      teardownServices();
+      await teardownServices();
       clearCurrentConfig();
       await resetAllData(request.payload.dataDir);
       return null;

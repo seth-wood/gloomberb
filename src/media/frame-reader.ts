@@ -61,10 +61,13 @@ export function startFrameReader(options: StartFrameReaderOptions): FrameReader 
   const audioFormat = requestedAudio === "system" ? systemAudioFormat(process.platform) : null;
   const sized = { ...options, fps };
 
+  const silentBecauseNoAudioDevice = requestedAudio === "system" && !audioFormat;
+
   return new PipeFrameReader({
     spawn,
     argvWithAudio: audioFormat ? buildFfmpegArgv(sized, ffmpegPath, audioFormat) : null,
     argvSilent: buildFfmpegArgv(sized, ffmpegPath, null),
+    initialWarning: silentBecauseNoAudioDevice ? SILENT_AUDIO_WARNING : null,
     width: options.width,
     height: options.height,
   });
@@ -154,12 +157,14 @@ class PipeFrameReader implements FrameReader {
       spawn: SpawnFrameSource;
       argvWithAudio: string[] | null;
       argvSilent: string[];
+      initialWarning: string | null;
       width: number;
       height: number;
     },
   ) {
     const argv = config.argvWithAudio ?? config.argvSilent;
     this.audioOutput = config.argvWithAudio ? "system" : "silent";
+    this.fallbackWarning = config.initialWarning;
     this.source = config.spawn(argv);
     this.stdoutReader = this.source.stdout.getReader();
     this.stderrReader = this.source.stderr.getReader();

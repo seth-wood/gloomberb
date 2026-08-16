@@ -42,6 +42,7 @@ import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
 import { useAppStartupRuntime } from "./app/runtime/startup";
 import { useTickerRefreshRuntime } from "./app/runtime/ticker-refresh";
 import { useAppUpdateRuntime } from "./app/runtime/update";
+import { trackAppServicesDestroy } from "./core/app-services";
 import { createCoreSyncContributors } from "./sync/core-contributors";
 import { useCloudSyncRuntime } from "./sync/react";
 import { RemoteControlHost, type RemoteControlAdapter } from "./remote/app-host";
@@ -451,7 +452,9 @@ export function App({
     });
   }, [config.dataDir, externalPlugins, servicesFactory]);
 
-  useEffect(() => () => void services.destroy(), [services]);
+  useEffect(() => () => {
+    trackAppServicesDestroy(services.destroy());
+  }, [services]);
 
   const sessionSnapshot = useMemo(() => {
     return resolveAppSessionSnapshot({

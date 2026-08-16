@@ -8,7 +8,7 @@ import {
   PLAYBACK_RESIZE_DEBOUNCE_MS,
   type PlaybackSession,
   type PlaybackSessionRegistry,
-} from "./playback-session";
+} from "./playback-session.ts";
 import type { PlaybackSessionState, ResolvedLiveStream } from "../types/media";
 
 const WIDTH = 4;
@@ -81,7 +81,7 @@ class FakeFrameReader implements FrameReader {
   stopped = false;
   readonly pid = 4242;
   readonly audio = "system" as const;
-  readonly warning = null;
+  warning: string | null = null;
   private resolveDone: () => void = () => {};
   readonly done: Promise<void>;
   private releaseStop: (() => void) | null = null;
@@ -547,7 +547,24 @@ describe("playback session registry", () => {
     await flush();
 
     expect(session.state).toBe("failed");
+    expect(session.failureMessage).toMatch(/stopped unexpectedly/i);
     expect(registry.current).toBe(session);
+  });
+
+  test("forwards a silent-audio warning from the frame reader", async () => {
+    const { registry, readers } = createHarness();
+    const session = await startPlaying(registry, readers, {
+      surfaceId: "pane-a",
+      liveStream: liveStream(),
+      width: WIDTH,
+      height: HEIGHT,
+    });
+
+    readers[0]!.warning = "Audio is unavailable; playing silent video.";
+    expect(session.warning).toBeNull();
+
+    session.takeLatestFrame();
+    expect(session.warning).toMatch(/silent video/i);
   });
 
   test("a failed restart retries until the pipeline starts again without reporting failed", async () => {

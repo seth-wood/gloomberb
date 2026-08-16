@@ -27,10 +27,12 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
   );
   const [channelId, setChannelId] = useState<TvChannelId>(initialChannelIdRef.current);
   const [stream, setStream] = useState<ResolvedLiveStream | null>(null);
-  const [resolution, setResolution] = useState<ResolutionState>(isDesktop ? "resolving" : "resolved");
+  const [resolution, setResolution] = useState<ResolutionState>("resolving");
   const [error, setError] = useState<string | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [playbackWarning, setPlaybackWarning] = useState<string | null>(null);
   const [playbackState, setPlaybackState] = useState<PlaybackSessionState>("idle");
+  const [playbackGeneration, setPlaybackGeneration] = useState(0);
   const [muted, setMuted] = useState(true);
   const mediaRef = useRef<MediaSurfaceHandle | null>(null);
   const generationRef = useRef(0);
@@ -63,22 +65,9 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
     const generation = ++generationRef.current;
     setError(null);
     setPlaybackError(null);
+    setPlaybackWarning(null);
     setPlaybackState("idle");
-    if (!isDesktop) {
-      setStream({
-        provider: "generated",
-        sourceId: channel.id,
-        videoId: "generated-test-pattern",
-        title: `${channel.name} pipeline test pattern`,
-        manifestUrl: "generated:test-pattern",
-        watchUrl: "generated:test-pattern",
-        resolvedAt: 0,
-        expiresAt: Number.MAX_SAFE_INTEGER,
-      });
-      setResolution("resolved");
-      return;
-    }
-
+    setPlaybackGeneration((current) => current + 1);
     setResolution("resolving");
     setStream((current) => current?.sourceId === channel.id ? current : null);
     try {
@@ -94,11 +83,22 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
       setError(cause instanceof Error ? cause.message : String(cause));
       setResolution("unavailable");
     }
-  }, [channel, isDesktop, renderer]);
+  }, [channel, renderer]);
 
   const refresh = useCallback(() => {
     void load(true);
   }, [load]);
+
+  const renewLiveStream = useCallback(async (current: ResolvedLiveStream) => {
+    const generation = generationRef.current;
+    const nextStream = renderer.resolveLiveStream
+      ? await renderer.resolveLiveStream({ provider: "youtube", sourceId: channel.id, force: true })
+      : await resolveTvStream(channel, { force: true });
+    if (generation !== generationRef.current) return current;
+    if (nextStream.manifestUrl === current.manifestUrl) return current;
+    setStream(nextStream);
+    return nextStream;
+  }, [channel, renderer]);
 
   useEffect(() => {
     void load();
@@ -161,20 +161,30 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
     ? `resolving ${channel.name}`
     : error || playbackError
       ? "stream error"
-      : playbackState === "playing"
-        ? "playing live"
-        : playbackState === "starting" || playbackState === "stalled"
-          ? "buffering live"
-          : stream
-            ? "live"
-            : "offline";
+      : playbackWarning
+        ? "silent video"
+        : playbackState === "playing"
+          ? "playing live"
+          : playbackState === "starting" || playbackState === "stalled"
+            ? "buffering live"
+            : playbackState === "failed"
+              ? "stream error"
+              : stream
+                ? "live"
+                : "offline";
 
   usePaneFooter(paneId, () => ({
     info: [{
       id: "tv-status",
       parts: [{
         text: status,
-        tone: error || playbackError ? "warning" : playbackState === "playing" ? "positive" : "value",
+        tone: error || playbackError
+          ? "warning"
+          : playbackWarning
+            ? "warning"
+            : playbackState === "playing"
+              ? "positive"
+              : "value",
       }],
     }],
     hints: [
@@ -194,7 +204,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
       },
       { id: "refresh", key: "r", label: "efresh", onPress: refresh, disabled: resolving },
     ],
-  }), [error, muted, paneId, playbackError, playbackState, refresh, resolving, status, stream, toggleMute, togglePlayback]);
+  }), [error, muted, paneId, playbackError, playbackGeneration, playbackState, playbackWarning, refresh, resolving, status, stream, toggleMute, togglePlayback]);
 
   const channelTabs = useMemo(() => TV_CHANNELS.map((item, index) => ({
     label: `${index + 1} ${item.name}`,
@@ -227,20 +237,24 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
       ) : (
         <MediaSurface
           src={stream.manifestUrl}
+          liveStream={stream}
+          renewLiveStream={renewLiveStream}
           title={stream.title}
           poster={stream.posterUrl}
           autoPlay
           muted={muted}
+          playbackGeneration={playbackGeneration}
           mediaHandleRef={mediaRef}
           height={mediaHeight}
           flexGrow={1}
           onPlaybackStateChange={setPlaybackState}
           onMutedChange={setMuted}
+          onWarning={setPlaybackWarning}
           onError={setPlaybackError}
         >
           <Box flexGrow={1} justifyContent="center" alignItems="center">
             <Text fg={colors.warning}>
-              {playbackError ?? (isDesktop ? "Live video unavailable." : "Kitty graphics are required for video.")}
+              {playbackError ?? playbackWarning ?? (isDesktop ? "Live video unavailable." : "Kitty graphics are required for video.")}
             </Text>
           </Box>
         </MediaSurface>

@@ -316,11 +316,12 @@ function disposeWindowScopedResources(windowKey: string): void {
   capabilityBridge.disposeWindow(windowKey);
 }
 
-function teardownServices(): void {
+async function teardownServices(): Promise<void> {
   stopDesktopRemoteControlServer();
   capabilityBridge.disposeAll();
-  void services?.destroy();
+  const destroy = services?.destroy();
   services = null;
+  await destroy;
 }
 
 function restartDesktopApp(message: DesktopRestartMessage = {}): void {
@@ -341,8 +342,9 @@ function restartDesktopApp(message: DesktopRestartMessage = {}): void {
     throw error;
   }
   closeAllDetachedWindows();
-  teardownServices();
-  Utils.quit();
+  void teardownServices().then(() => {
+    Utils.quit();
+  });
 }
 
 async function commitDesktopSnapshot(
@@ -373,11 +375,12 @@ function closeAllDetachedWindows(): void {
 
 function quitDesktopApp(): void {
   closeAllDetachedWindows();
-  teardownServices();
-  const window = mainWindow;
-  mainWindow = null;
-  window?.close();
-  Utils.quit();
+  void teardownServices().then(() => {
+    const window = mainWindow;
+    mainWindow = null;
+    window?.close();
+    Utils.quit();
+  });
 }
 
 function controlWindowForRpcKey(windowKey: string | undefined, action: DesktopWindowControlAction): boolean {

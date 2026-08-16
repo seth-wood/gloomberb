@@ -20,7 +20,7 @@ interface DesktopHostRequestOptions<TRpc> {
   request: DesktopHostRequest;
   restartDesktopApp: (message?: DesktopRestartMessage) => void;
   rpc: TRpc;
-  teardownServices: () => void;
+  teardownServices: () => void | Promise<void>;
   trackContextMenuRequest: (requestId: string, rpc: TRpc) => void;
 }
 
@@ -72,14 +72,15 @@ export function handleDesktopHostRequest<TRpc>({
       return null;
     case "host.exit": {
       closeAllDetachedWindows();
-      teardownServices();
-      const mainWindow = getMainWindow();
-      if (mainWindow) {
-        mainWindow.close();
-        clearMainWindow();
-        return null;
-      }
-      Utils.quit();
+      void Promise.resolve(teardownServices()).then(() => {
+        const mainWindow = getMainWindow();
+        if (mainWindow) {
+          mainWindow.close();
+          clearMainWindow();
+          return;
+        }
+        Utils.quit();
+      });
       return null;
     }
     case "host.windowControl": {
@@ -87,14 +88,15 @@ export function handleDesktopHostRequest<TRpc>({
       const windowKey = getRpcWindowKey(rpc);
       if (action === "close" && windowKey === MAIN_WINDOW_RPC_KEY) {
         closeAllDetachedWindows();
-        teardownServices();
-        const mainWindow = getMainWindow();
-        if (mainWindow) {
-          mainWindow.close();
-          clearMainWindow();
-          return null;
-        }
-        Utils.quit();
+        void Promise.resolve(teardownServices()).then(() => {
+          const mainWindow = getMainWindow();
+          if (mainWindow) {
+            mainWindow.close();
+            clearMainWindow();
+            return;
+          }
+          Utils.quit();
+        });
         return null;
       }
       if (!controlWindowForRpcKey(windowKey, action)) {

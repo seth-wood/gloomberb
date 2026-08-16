@@ -14,6 +14,8 @@ const LIVE_STREAM_RENEWAL_RETRY_MS = 5_000;
 /** Retry a restart-driven pipeline start this far after startFrameReader throws. */
 export const PLAYBACK_PIPELINE_RESTART_RETRY_MS = 1_000;
 
+export const PLAYBACK_UNEXPECTED_FAILURE_MESSAGE = "Playback stopped unexpectedly.";
+
 interface ScheduledTask {
   cancel(): void;
 }
@@ -25,6 +27,8 @@ export interface PlaybackSession {
   readonly surfaceId: string;
   readonly state: PlaybackSessionState;
   readonly stopReason: PlaybackStopReason | null;
+  readonly failureMessage: string | null;
+  readonly warning: string | null;
   readonly liveStream: ResolvedLiveStream;
   takeLatestFrame(): RgbaFrame | null;
   setVisible(visible: boolean): void;
@@ -162,6 +166,8 @@ class LivePlaybackSession implements PlaybackSession {
   readonly surfaceId: string;
   private _state: PlaybackSessionState = "idle";
   private _stopReason: PlaybackStopReason | null = null;
+  private _failureMessage: string | null = null;
+  private _warning: string | null = null;
   private _liveStream: ResolvedLiveStream;
   private width: number;
   private height: number;
@@ -207,6 +213,14 @@ class LivePlaybackSession implements PlaybackSession {
     return this._stopReason;
   }
 
+  get failureMessage(): string | null {
+    return this._failureMessage;
+  }
+
+  get warning(): string | null {
+    return this._warning;
+  }
+
   get liveStream(): ResolvedLiveStream {
     return this._liveStream;
   }
@@ -223,6 +237,7 @@ class LivePlaybackSession implements PlaybackSession {
     if (next && this.shouldRunPipeline() && (this._state === "starting" || this._state === "stalled")) {
       this.setState("playing");
     }
+    this.syncReaderWarning();
     return next;
   }
 
@@ -362,12 +377,14 @@ class LivePlaybackSession implements PlaybackSession {
         this.schedulePipelineRetry(generation);
         return;
       }
-      this.setState("failed");
+      this.fail(PLAYBACK_UNEXPECTED_FAILURE_MESSAGE);
       return;
     }
     this.pipelineRetryTask?.cancel();
     this.pipelineRetryTask = null;
     this._stopReason = null;
+    this._failureMessage = null;
+    this._warning = null;
     this.setState(nextState);
     const reader = this.reader;
     if (!reader) return;
@@ -375,8 +392,20 @@ class LivePlaybackSession implements PlaybackSession {
       if (this.generation !== generation || this.reader !== reader) return;
       if (this.hasEnded() || this._state === "stopped") return;
       this.reader = null;
-      this.setState("failed");
+      this.fail(PLAYBACK_UNEXPECTED_FAILURE_MESSAGE);
     });
+  }
+
+  private fail(message: string): void {
+    this._failureMessage = message;
+    this.setState("failed");
+  }
+
+  private syncReaderWarning(): void {
+    const warning = this.reader?.warning ?? null;
+    if (warning === this._warning) return;
+    this._warning = warning;
+    this.notify();
   }
 
   private schedulePipelineRetry(generation: number): void {
