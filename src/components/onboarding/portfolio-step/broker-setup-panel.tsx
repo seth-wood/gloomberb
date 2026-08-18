@@ -1,4 +1,4 @@
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, useUiHost } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { BrokerAdapter } from "../../../types/broker";
@@ -18,30 +18,24 @@ export function BrokerSetupPanel({
 }) {
   const brokerLabel = getBrokerLabel(choices, selectedBrokerId);
   const guide = adapter?.getSetupGuide?.(brokerValues[selectedBrokerId] ?? {}) ?? null;
+  const desktop = useUiHost().kind === "desktop-web";
 
   return (
-    <Box flexDirection="column" paddingX={2}>
-      <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {tf("Setup Guide - {broker}", { broker: brokerLabel })}
-        </Text>
-      </Box>
-      <Box height={1} />
-
+    <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>
       {guide ? (
         <>
-          <Box height={1}>
+          <Box height={1} overflow="hidden">
             <Text fg={colors.textDim}>{guide.intro}</Text>
           </Box>
-          <Box height={2} />
+          <Box height={desktop ? 2 : 1} />
           {guide.steps.map((step) => (
-            <Box height={1} key={step}>
+            <Box height={1} key={step} overflow="hidden">
               <Text fg={colors.textDim}>{step}</Text>
             </Box>
           ))}
           {guide.docsUrl ? (
             <>
-              <Box height={2} />
+              <Box height={desktop ? 2 : 1} />
               <ExternalLink url={guide.docsUrl} />
             </>
           ) : null}
@@ -57,7 +51,7 @@ export function BrokerSetupPanel({
         </>
       )}
 
-      <Box height={2} />
+      <Box height={desktop ? 2 : 1} />
     </Box>
   );
 }
