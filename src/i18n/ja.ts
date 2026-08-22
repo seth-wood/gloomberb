@@ -431,6 +431,7 @@ export const ja: Record<string, string> = {
   "Lock this pane to Polymarket.": "このペインを Polymarket にロックします。",
   "Hide the top venue tabs and lock this pane to one scope.": "上部の会場タブを非表示にし、このペインを 1 つのスコープにロックします。",
   "Interactive Brokers market data, account sync, and trading.": "Interactive Brokers の市場データ、口座同期、取引。",
+  "Charles Schwab account sync and portfolio tracking.": "Charles Schwab の口座同期とポートフォリオ追跡。",
   "Free market, macro, and chat services. Chat requires signup.": "無料の市場・マクロ・チャットサービス。チャットには登録が必要です。",
 
   // ── Settings fields ──────────────────────────────────────────
@@ -611,6 +612,12 @@ export const ja: Record<string, string> = {
   "   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)": "Gloomberb はローカル API ポート (4001、4002、7496、7497) を自動検出できます。",
   "   Use Manual setup only if you need a custom host or exact socket port": "   カスタムホストや特定のソケットポートが必要な場合のみ手動設定を使用",
   "4. Keep it running while using Gloomberb": "4. Gloomberb の使用中は実行し続ける",
+  "You'll need a Schwab developer app and OAuth login:": "Schwab の開発者アプリと OAuth ログインが必要です。",
+  "1. Create an Individual Trader API app at the Schwab Developer Portal": "1. Schwab Developer Portal で Individual Trader API アプリを作成",
+  "2. Set the callback URL to https://127.0.0.1:8182 (must match exactly)": "2. コールバック URL を https://127.0.0.1:8182 に設定（完全一致が必要）",
+  "3. Copy the App Key and App Secret into your broker profile": "3. App Key と App Secret を証券会社プロファイルに入力",
+  "4. Connect — Gloomberb opens Schwab in your browser. Continue past the 127.0.0.1 certificate warning if shown": "4. 接続 — Gloomberb がブラウザで Schwab を開きます。127.0.0.1 の証明書警告が出たら続行",
+  "5. Every 7 days Schwab requires another browser sign-in (password/MFA). Gloomberb will reopen the login": "5. 7 日ごとに Schwab はブラウザ再ログイン（パスワード/MFA）を要求します。Gloomberb がログイン画面を再度開きます",
   "You'll need your {broker} API credentials.": "{broker} API の認証情報が必要です。",
   "Connecting to {broker} and importing accounts and positions...": "{broker} に接続し、口座とポジションを取り込み中...",
   "Unable to sync {broker}.": "{broker} を同期できません。",

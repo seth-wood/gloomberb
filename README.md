@@ -29,8 +29,24 @@ Gloomberb has two ways in:
 |---------|----------|-------------|
 | Desktop app | A polished app window, pop-out panes, OS shortcuts, and built-in updates | Published for macOS and Windows. It also installs a `gloomberb` terminal command for the TUI. |
 | Terminal UI | Fast keyboard workflows inside your terminal, SSH/dev boxes, Linux machines, and script-friendly setups | Runs with `gloomberb` on macOS, Linux, and Windows. |
+| Browser app | The shared DOM interface without an install | Open [term.gloom.sh](https://term.gloom.sh). |
 
-Both share the same command language, plugin system, market data surfaces, portfolios, watchlists, alerts, notes, and AI tools.
+The desktop app and TUI share the full command language and plugin system. The browser app uses the same official DOM renderer and layout with a reviewed browser plugin catalog.
+
+## Browser App
+
+[term.gloom.sh](https://term.gloom.sh) works anonymously with configuration, tickers, layouts, session state, and plugin state stored in the browser. Gloom Cloud login is optional and enables cloud-backed market data, chat, and sync. Cloud REST and WebSocket traffic goes directly to `https://api.gloom.sh`; the static host never receives Gloom credentials.
+
+The browser build intentionally omits brokers and native integrations, filesystem notes, local AI, external plugins, updater/debug tools, application menus, native window controls, pop-out native windows, and native context menus. Modules that still depend on desktop-only or CORS-blocked feeds are also absent for now: RSS/Substack, prediction markets and polls, market halts/heatmap/movers, dividend/ownership/SEC panes, earnings/IPO, and TV. Public shares open under `/s/:id` in a separate slim bundle. Share creation and owner deletion use the signed-in Gloom Cloud session directly on the API; public reads require no account.
+
+Local browser development:
+
+```bash
+bun run web:build
+bunx wrangler dev
+```
+
+Validate the public artifacts with `bun run web:audit` and `bun run cloudflare:dry-run`. `wrangler.jsonc` is intentionally generic and contains no account, route, domain, namespace, or secret. Production routing and the private Gloom Cloud API deployment are configured separately.
 
 ## Install
 
@@ -106,6 +122,7 @@ Open command mode with `Ctrl+P`, then type a command. Press `` ` `` to open tick
 | `TOP` | Ranked market stories |
 | `HM` | Market heatmap |
 | `MOST` | Market movers |
+| `HILO` | New highs and new lows |
 | `PF` | Portfolios and watchlists |
 | `KELLY AAPL` | Position sizing |
 | `HELP` | Full in-app shortcut list |
@@ -113,8 +130,18 @@ Open command mode with `Ctrl+P`, then type a command. Press `` ` `` to open tick
 ## What It Does
 
 - Research companies with quotes, charts, financials, filings, holders, insiders, options, analyst ratings, events, and relative valuation.
-- Follow markets with top stories, breaking news, sector feeds, Substack subscriptions, global indices, FX, macro events, yield curves, market movers, and fear/greed.
+- Follow markets with top stories, breaking news, sector feeds, Substack subscriptions, global indices, futures, FX, macro events, yield curves, Treasury auctions, market movers, new-high/new-low and options-flow scanners, and fear/greed.
 - Track portfolios and watchlists, connect brokers, set alerts, keep notes, run AI screens, browse prediction markets, and use Gloom Cloud chat.
+
+### Broker position sync
+
+Use **New Portfolio** or **Add Broker Account** to connect a broker. Gloomberb can import positions from Interactive Brokers, Public, Robinhood, and SimpleFIN.
+
+- Robinhood opens a browser sign-in page. Gloomberb uses only the read-only account and equity-position tools from the Robinhood Trading MCP server.
+- Public needs an API secret from Public API settings. Gloomberb creates a short-lived access token and uses only the account and portfolio endpoints.
+- SimpleFIN needs a one-time setup token from SimpleFIN Bridge. Gloomberb exchanges the token and imports only accounts that contain holdings.
+
+Gloomberb saves the connection data on the local device. It does not include this data in Gloom Cloud synchronization. A later position sync updates the managed portfolios and removes positions that the broker no longer reports.
 
 ## CLI
 
@@ -199,6 +226,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `DES <ticker>` / `T <ticker>` | Security details for a ticker |
 | `FA <ticker>` | Financial statement view |
 | `G <series>` | Custom chart composer |
+| `CAT [query]` | Browse and search chartable series |
 | `GP <ticker>` | Price chart |
 | `GIP <ticker>` | Intraday price chart |
 | `HP <ticker>` | Historical OHLCV prices |
@@ -214,7 +242,10 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `ANR <ticker>` | Analyst targets and ratings |
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options monitor |
+| `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
 | `HDS <ticker>` | Institutional holders |
+| `DVD <ticker>` | Dividend yield and history |
+| `SI <ticker>` | Short interest |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS <ticker>` | Insider activity |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
@@ -222,7 +253,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 
 ### Chart Composer
 
-`G`, `GP`, `GIP`, `CMP`, `GF`, and `GE` all open the same chart composer with different starting presets. A custom expression can mix unrelated data sources on one synchronized timeline:
+`G`, `GP`, `GIP`, `CMP`, `GF`, and `GE` all open the same chart composer with different starting presets. `CAT` opens a searchable catalog of those chartable series so you can graph one without typing the expression. A custom expression can mix unrelated data sources on one synchronized timeline:
 
 ```text
 G AAPL:price, MSFT:revenue, FRED:CPIAUCSL
@@ -239,6 +270,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `TOP` | Ranked market stories |
 | `HM` | Market heatmap for large US stocks and ETFs |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
+| `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
+| `FLOW` | Unusual options activity: sweeps, blocks, and large premium |
 | `PM <query>` | Polymarket and Kalshi prediction data |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
@@ -249,9 +282,15 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `TBO` | TheBuildout infrastructure intelligence |
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
+| `FUT` | Front-month futures across index, rates, energy, metals, grains, and FX |
 | `ECON` | Economic events and releases |
 | `GC` | Yield curve |
+| `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
+| `VIX` | VIX 30-day/3-month implied-volatility curve |
+| `CRD` | Credit spreads |
 | `ERN` | Earnings calendar |
+| `IPO` | Upcoming and recent IPOs |
+| `HALT` | US trading halts with reason and resumption times |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television |
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |

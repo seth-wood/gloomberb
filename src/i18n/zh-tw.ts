@@ -431,6 +431,7 @@ export const zhTW: Record<string, string> = {
   "Lock this pane to Polymarket.": "鎖定此面板為 Polymarket。",
   "Hide the top venue tabs and lock this pane to one scope.": "隱藏上方平台頁籤並鎖定此面板的範圍。",
   "Interactive Brokers market data, account sync, and trading.": "盈透證券行情、帳戶同步與交易。",
+  "Charles Schwab account sync and portfolio tracking.": "嘉信理財帳戶同步與投資組合追蹤。",
   "Free market, macro, and chat services. Chat requires signup.": "免費行情、宏觀與聊天服務。聊天需註冊。",
 
   // ── Settings fields ──────────────────────────────────────────
@@ -611,6 +612,12 @@ export const zhTW: Record<string, string> = {
   "   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)": "   Gloomberb 可自動偵測本機 API 連接埠（4001、4002、7496、7497）",
   "   Use Manual setup only if you need a custom host or exact socket port": "   僅在需要自訂主機或指定 Socket 連接埠時使用手動設定",
   "4. Keep it running while using Gloomberb": "4. 使用 Gloomberb 時請讓它保持執行",
+  "You'll need a Schwab developer app and OAuth login:": "你需要一個 Schwab 開發者應用並完成 OAuth 登入：",
+  "1. Create an Individual Trader API app at the Schwab Developer Portal": "1. 在 Schwab Developer Portal 建立 Individual Trader API 應用",
+  "2. Set the callback URL to https://127.0.0.1:8182 (must match exactly)": "2. 將回呼 URL 設為 https://127.0.0.1:8182（必須完全一致）",
+  "3. Copy the App Key and App Secret into your broker profile": "3. 將 App Key 和 App Secret 填入券商設定",
+  "4. Connect — Gloomberb opens Schwab in your browser. Continue past the 127.0.0.1 certificate warning if shown": "4. 連線 — Gloomberb 會在瀏覽器中開啟 Schwab。如出現 127.0.0.1 憑證警告請繼續",
+  "5. Every 7 days Schwab requires another browser sign-in (password/MFA). Gloomberb will reopen the login": "5. 每 7 天 Schwab 需要再次在瀏覽器中登入（密碼/MFA）。Gloomberb 會重新開啟登入頁",
   "You'll need your {broker} API credentials.": "你需要準備 {broker} 的 API 憑證。",
   "Connecting to {broker} and importing accounts and positions...": "正在連線 {broker} 並匯入帳戶和持倉...",
   "Unable to sync {broker}.": "無法同步 {broker}。",

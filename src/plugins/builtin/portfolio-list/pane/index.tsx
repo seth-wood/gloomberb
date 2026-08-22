@@ -128,7 +128,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const flashSymbols = useQuoteFlashMap(financialsMap, valueFlashingEnabled);
 
   const accountStateInput = useMemo(() => ({ brokerAccounts, config }), [brokerAccounts, config]);
-  const accountState = usePortfolioAccountState(currentPortfolio, accountStateInput);
+  const { accountState, accountsError } = usePortfolioAccountState(currentPortfolio, accountStateInput);
   const columns = useMemo(
     () => resolveVisibleColumns(paneSettings.columnIds, isPortfolioTab),
     [isPortfolioTab, paneSettings.columnIds],
@@ -310,7 +310,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     if (!appActive) return;
-    const timerId = setInterval(() => setNow(Date.now()), 1000);
+    // Only ages relative labels (quote age, days held), so the shared 30s cadence is enough.
+    const timerId = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timerId);
   }, [appActive]);
 
@@ -350,7 +351,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
 
   const summaryFooterInfo = useMemo(() => buildPortfolioFooterSegments({
     accountState: accountState ? { account: accountState.account, sourceLabel: accountState.sourceLabel } : null,
-    accountStatusText: isPortfolioTab && currentPortfolio?.brokerInstanceId && !accountState ? "Acct missing" : undefined,
+    accountStatusText: accountsError
+      ? `Accounts unavailable: ${accountsError}`
+      : isPortfolioTab && currentPortfolio?.brokerInstanceId && !accountState ? "Acct missing" : undefined,
     portfolioScope: activePortfolioIds,
     baseCurrency: config.baseCurrency,
     exchangeRates: effectiveExchangeRates,
@@ -362,6 +365,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     width,
   }), [
     accountState,
+    accountsError,
     activePortfolioIds,
     currentPortfolio?.brokerInstanceId,
     effectiveExchangeRates,

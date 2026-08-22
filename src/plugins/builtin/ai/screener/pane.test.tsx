@@ -242,7 +242,8 @@ describe("AiScreenerPane", () => {
     expect(frame).toContain("Initial pass");
     expect(frame).toContain("Strong cash flow durability");
     expect(frame.match(/Strong cash flow durability/g)?.length).toBe(1);
-    expect(frame).toContain("[r]efresh");
+    // `r` refreshes every pane, so it is never advertised per pane.
+    expect(frame).not.toContain("[r]efresh");
     expect(frame).not.toContain("[Shift+R]");
     const lines = frame.split("\n");
     const tabLine = lines.findIndex((line) => line.includes("Compounders"));

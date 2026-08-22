@@ -66,16 +66,36 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function canMigrateV1(decoded: Record<string, unknown>): boolean {
+  return !Array.isArray(decoded.series) || decoded.series.every((entry) => {
+    const source = isRecord(entry) && isRecord(entry.source) ? entry.source : null;
+    return source?.kind === "security" || source?.kind === "economic";
+  });
+}
+
 /** Parse, migrate, normalize, and semantically validate a persisted chart spec. */
 export function parseChartSpec(value: unknown): ChartSpec | null {
   const decoded = decodeSpec(value);
   if (!isRecord(decoded)) return null;
-  if (decoded.version !== undefined && decoded.version !== CHART_SPEC_VERSION) return null;
+  const version = decoded.version;
+  if (version !== CHART_SPEC_VERSION && !((version === 1 || version === undefined) && canMigrateV1(decoded))) {
+    return null;
+  }
   const spec = normalizeChartSpec(decoded, DEFAULT_CHART_SPEC);
   return validateChartSpec(spec).valid ? spec : null;
 }
 
 export function parseChartSpecOr(value: unknown, fallback: ChartSpec): ChartSpec {
+  if (
+    isRecord(value)
+    && value.version === CHART_SPEC_VERSION
+    && Array.isArray(value.series)
+    && Array.isArray(value.panels)
+    && Array.isArray(value.studies)
+  ) {
+    const spec = value as unknown as ChartSpec;
+    if (validateChartSpec(spec).valid) return spec;
+  }
   return parseChartSpec(value) ?? normalizeChartSpec(fallback, DEFAULT_CHART_SPEC);
 }
 

@@ -2,6 +2,8 @@ import { useCallback, useMemo } from "react";
 import { TextAttributes } from "../../../../ui";
 import {
   DataTableView,
+  loadingText,
+  unavailableText,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -17,7 +19,7 @@ import {
   useDebouncedPluginPaneState,
   usePluginPaneState,
 } from "../../../runtime";
-import { loadingErrorFooterInfo, refreshFooterHint, useClampSelectedIndex } from "../../shared/table-pane";
+import { loadingErrorFooterInfo, useClampSelectedIndex } from "../../shared/table-pane";
 import { formatDateTime, useBoundTicker, useTickerRequest } from "../../shared/ticker-request";
 
 type HistoryColumnId = "date" | "open" | "high" | "low" | "close" | "change" | "changePercent" | "volume";
@@ -165,9 +167,8 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
     ],
     hints: [
       { id: "range", key: "t", label: "oggle range", onPress: cycleRange },
-      refreshFooterHint(reload),
     ],
-  }), [cycleRange, error, loading, range, reload]);
+  }), [cycleRange, error, loading, range]);
 
   return (
     <DataTableView<HistoricalPriceRow, HistoryColumn>
@@ -187,7 +188,12 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       onHeaderClick={() => {}}
       getItemKey={(row) => row.key}
       renderCell={renderCell}
-      emptyStateTitle={loading ? "Loading historical prices..." : "No historical prices"}
+      emptyStateTitle={error
+        ? unavailableText("Historical prices")
+        : loading
+          ? loadingText("historical prices")
+          : "No historical prices"}
+      emptyStateHint={error ?? undefined}
     />
   );
 }

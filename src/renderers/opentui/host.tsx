@@ -5,8 +5,12 @@ import { resetTerminalInputState } from "../../utils/terminal-input-reset";
 import type { KeyEventLike } from "../../react/input";
 import type { NativeRendererHost, PixelResolution, RendererHost } from "../../ui/host";
 import { colors } from "../../theme/colors";
+import { safeExternalUrl } from "../../utils/external-url";
+import { createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
 
 export { useKeyboard, useTerminalDimensions };
+
+const terminalMedia = createTerminalMediaReaper({ stateFile: terminalMediaStateFile() });
 
 export interface OpenTuiHost {
   renderer: CliRenderer;
@@ -95,7 +99,9 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
 
   const rendererHost: RendererHost = {
     requestExit: () => renderer.destroy(),
-    async openExternal(url) {
+    async openExternal(rawUrl) {
+      const url = safeExternalUrl(rawUrl);
+      if (!url) return;
       const command = process.platform === "darwin"
         ? ["open", url]
         : process.platform === "win32"
@@ -137,6 +143,9 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
         throw new Error("mpv is required for terminal TV playback. Install mpv and try again.");
       }
 
+      // A player stranded by a previous run keeps decoding video, so clear it
+      // before adding another one.
+      terminalMedia.reapStale();
       renderer.suspend();
       try {
         const proc = Bun.spawn([
@@ -158,6 +167,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
           stdout: "inherit",
           stderr: "pipe",
         });
+        terminalMedia.track(proc);
         const stderrPromise = new Response(proc.stderr).text();
         const exitCode = await proc.exited;
         const stderr = await stderrPromise;
@@ -166,9 +176,13 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
           throw new Error(detail || `mpv exited with status ${exitCode}`);
         }
       } finally {
+        terminalMedia.stopActive();
         renderer.resume();
         renderer.requestRender();
       }
+    },
+    stopTerminalMedia() {
+      terminalMedia.stopActive();
     },
   };
 

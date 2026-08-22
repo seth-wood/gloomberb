@@ -4,6 +4,23 @@ import { truncateToDisplayWidth } from "../../utils/format";
 
 export { rankTickerSearchItems } from "../../tickers/search";
 
+/**
+ * Drop repeats of an id, keeping the first. The root list is assembled from
+ * overlapping sources (pane shortcuts, commands, plugin commands, ticker
+ * actions, layout items) in priority order, so the first hit is the one whose
+ * category and detail fit best.
+ */
+export function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  return result;
+}
+
 export type CommandBarMode = "default" | "search" | "themes" | "plugins" | "layout" | "direct-command";
 
 export interface CommandBarModeInfo {
@@ -66,7 +83,24 @@ export function resolveCommandBarMode(query: string, commandList?: Command[]): C
   }
 }
 
-export function buildSections<T extends { category: string }>(
+/**
+ * A section whose every row is disabled or unselectable is an offer, not an
+ * answer, so it sorts below real matches however its category is prioritized.
+ */
+const OFFER_SECTION_DEMOTION = 200;
+
+interface SectionSortableItem {
+  category: string;
+  disabled?: boolean;
+  defaultSelectable?: boolean;
+}
+
+function isOfferOnlySection<T extends SectionSortableItem>(items: T[]): boolean {
+  return items.length > 0
+    && items.every((item) => item.disabled === true || item.defaultSelectable === false);
+}
+
+export function buildSections<T extends SectionSortableItem>(
   items: T[],
   options?: { sectionOrder?: CommandBarSectionOrder },
 ): Array<CommandBarSection<T>> {
@@ -82,8 +116,10 @@ export function buildSections<T extends { category: string }>(
   return sections
     .map((section, index) => ({ section, index }))
     .sort((a, b) => {
-      const leftPriority = getCategoryPriority(a.section.category, options?.sectionOrder);
-      const rightPriority = getCategoryPriority(b.section.category, options?.sectionOrder);
+      const leftPriority = getCategoryPriority(a.section.category, options?.sectionOrder)
+        + (isOfferOnlySection(a.section.items) ? OFFER_SECTION_DEMOTION : 0);
+      const rightPriority = getCategoryPriority(b.section.category, options?.sectionOrder)
+        + (isOfferOnlySection(b.section.items) ? OFFER_SECTION_DEMOTION : 0);
       const priorityDiff = leftPriority - rightPriority;
       return priorityDiff !== 0 ? priorityDiff : a.index - b.index;
     })

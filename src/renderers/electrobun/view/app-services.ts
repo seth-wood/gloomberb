@@ -7,14 +7,16 @@ import type { AppRuntimeServices, AppServicesFactoryOptions } from "../../../cor
 import { newsProvider } from "../../../capabilities";
 import { debugLog } from "../../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../../utils/perf-marks";
-import { getRendererBuiltinPlugins } from "../../../plugins/catalog-ui";
 import { createRemoteAssetDataClient } from "./remote/asset-data-client";
 import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
+import { connectBackendConnectionHealth } from "./remote/connection-health-backend";
+import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
+import { createCapabilityInvoker } from "./remote/capability-invoker";
 
 const servicesLog = debugLog.createLogger("services");
 
-export function createElectrobunAppServices({ config }: AppServicesFactoryOptions): AppRuntimeServices {
+export function createElectrobunAppServices({ config, plugins }: AppServicesFactoryOptions): AppRuntimeServices {
   servicesLog.info("create desktop web services start", {
     brokerInstanceCount: config.brokerInstances.length,
   });
@@ -22,11 +24,20 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
   const tickerRepository = measurePerf("startup.services.ticker-repository", () => new RemoteTickerRepository());
   const dataProvider = measurePerf("startup.services.data-provider", () => createRemoteAssetDataClient());
   const marketData = new MarketDataCoordinator(dataProvider);
+  const invokeCapability = createCapabilityInvoker({
+    request: backendRequest,
+    shouldApplyDeadline: () => false,
+    timeoutMs: 0,
+  });
   const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence, {
     enableCapabilityHandlers: false,
     wrapBrokerAdapter: (broker) => createRemoteBrokerAdapter(broker),
+    remoteCapabilityManifests: () => getElectrobunBackendInitSnapshot()?.capabilityManifests ?? [],
+    remoteCapabilityInvoke: (capabilityId, operationId, payload, options) => (
+      invokeCapability(capabilityId, operationId, payload, options)
+    ),
   });
-  const newsService = new NewsService();
+  const newsService = new NewsService({ connectionHealth: pluginRegistry.connectionHealth });
 
   pluginRegistry.getConfigFn = () => config;
   pluginRegistry.getLayoutFn = () => config.layout;
@@ -45,7 +56,6 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     },
   }));
 
-  const plugins = getRendererBuiltinPlugins();
   const pluginReadyPromises: Promise<void>[] = [];
   for (const plugin of plugins) {
     pluginReadyPromises.push(measurePerfAsync("startup.services.register-plugin", () => (
@@ -55,6 +65,14 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
   measurePerf("startup.services.news-start", () => {
     newsService.start();
   });
+  let destroyed = false;
+  let disposeRemoteConnectionHealth: (() => void) | null = null;
+  const ready = Promise.all(pluginReadyPromises).then(() => {
+    if (destroyed) return;
+    const dispose = connectBackendConnectionHealth(pluginRegistry.connectionHealth);
+    if (destroyed) dispose();
+    else disposeRemoteConnectionHealth = dispose;
+  });
   servicesLog.info("create desktop web services complete", { pluginCount: plugins.length });
 
   return {
@@ -63,8 +81,11 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     dataProvider,
     marketData,
     pluginRegistry,
-    ready: Promise.all(pluginReadyPromises).then(() => {}),
+    ready,
     destroy() {
+      destroyed = true;
+      disposeRemoteConnectionHealth?.();
+      disposeRemoteConnectionHealth = null;
       setSharedMarketDataCoordinator(null);
       setSharedNewsService(null);
       newsService.stop();

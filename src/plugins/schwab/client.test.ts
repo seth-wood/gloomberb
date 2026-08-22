@@ -12,6 +12,12 @@ import { setHttpFetchTransport } from "../../utils/http-transport";
 
 const originalFetch = globalThis.fetch;
 
+const SCHWAB_TEST_CONFIG = {
+  appKey: "app-key",
+  appSecret: "app-secret",
+  callbackUrl: "https://127.0.0.1:8182",
+};
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
   resetSchwabPersistence();
@@ -93,7 +99,7 @@ describe("connectSchwabInstance", () => {
       accessExpiresAt: Date.now() + 3_600_000,
       refreshExpiresAt: Date.now() + 86_400_000,
       updatedAt: Date.now(),
-    });
+    }, SCHWAB_TEST_CONFIG);
 
     let fetchCalled = false;
     globalThis.fetch = async () => {
@@ -207,7 +213,7 @@ describe("importSchwabPortfolioSnapshot", () => {
       accessExpiresAt: Date.now() + 3_600_000,
       refreshExpiresAt: Date.now() + 86_400_000,
       updatedAt: Date.now(),
-    });
+    }, SCHWAB_TEST_CONFIG);
     setSchwabFetchTransportForTests(async (url) => {
       const requestUrl = String(url);
       if (requestUrl.endsWith("/accounts/accountNumbers")) {
@@ -253,7 +259,7 @@ describe("importSchwabPortfolioSnapshot", () => {
       accessExpiresAt: Date.now() + 3_600_000,
       refreshExpiresAt: Date.now() + 86_400_000,
       updatedAt: Date.now(),
-    });
+    }, SCHWAB_TEST_CONFIG);
     let accountRequestCount = 0;
     let refreshCalled = false;
     globalThis.fetch = async (_url, init) => {

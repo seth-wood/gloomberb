@@ -35,6 +35,7 @@ import type {
   CloudFundamentals,
   CloudHoldersPayload,
   CloudAnalystResearchPayload,
+  CloudShortInterestPayload,
   CloudBrowserHandoffResponse,
   CloudCorporateActionsPayload,
   CloudPricePointPayload,
@@ -57,6 +58,8 @@ import type {
   CloudSyncPushResponse,
   CloudSyncSnapshotResponse,
   QuoteStreamTarget,
+  ScannerFeedEvent,
+  ScannerKind,
 } from "./types";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
 
@@ -81,6 +84,7 @@ class GloomApiClient {
     this.auth = new CloudAuthApi({
       getCurrentUser: () => this.currentUser,
       getSessionToken: () => this.transport.getSessionToken(),
+      hasSessionCredential: () => this.transport.hasSessionCredential(),
       request: (path, options) => this.request(path, options),
       requireCapturedSession: (message) => this.requireCapturedSession(message),
       setCurrentUser: (user) => this.setCurrentUser(user),
@@ -90,6 +94,7 @@ class GloomApiClient {
     this.socket = new CloudApiSocket({
       getBaseUrl: () => this.transport.baseUrl,
       getSocketAuthToken: () => this.getSocketAuthToken(),
+      hasSessionCredential: () => this.transport.hasSessionCredential(),
       hasVerifiedUser: () => this.currentUser?.emailVerified === true,
       isUsingWebSocketToken: () => !!this.transport.getWebSocketToken(),
       clearWebSocketTokenForFallback: () => this.transport.clearWebSocketTokenForFallback(),
@@ -118,6 +123,10 @@ class GloomApiClient {
 
   getWebSocketToken(): string | null {
     return this.transport.getWebSocketToken();
+  }
+
+  setCookieSessionMode(enabled: boolean): void {
+    this.transport.setCookieSessionMode(enabled);
   }
 
   setSessionToken(token: string | null): void {
@@ -153,7 +162,7 @@ class GloomApiClient {
   }
 
   isVerified(): boolean {
-    return !!this.transport.getSessionToken() && !!this.currentUser?.emailVerified;
+    return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
   }
 
   private setCurrentUser(user: AuthUser | null): void {
@@ -184,7 +193,7 @@ class GloomApiClient {
   }
 
   private requireCapturedSession(message: string): void {
-    if (this.transport.getSessionToken()) return;
+    if (this.transport.hasSessionCredential()) return;
     this.transport.setWebSocketToken(null);
     this.setCurrentUser(null);
     throw new Error(message);
@@ -411,6 +420,11 @@ class GloomApiClient {
     return this.socket.subscribeQuotes(targets, onQuote);
   }
 
+  /** Subscribes to a shared scanner feed; all panes of one kind share one upstream subscription. */
+  subscribeScanner(scanner: ScannerKind, listener: (event: ScannerFeedEvent) => void): () => void {
+    return this.socket.subscribeScanner(scanner, listener);
+  }
+
   dispose(): void {
     this.socket.dispose();
   }
@@ -467,6 +481,10 @@ class GloomApiClient {
 
   async getCloudHolders(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudHoldersPayload>> {
     return this.data.getCloudHolders(symbol, exchange);
+  }
+
+  async getCloudShortInterest(symbol: string, years?: number): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
+    return this.data.getCloudShortInterest(symbol, years);
   }
 
   async getCloudAnalystResearch(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {

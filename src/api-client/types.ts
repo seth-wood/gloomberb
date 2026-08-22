@@ -322,10 +322,28 @@ export interface CloudFredSeriesPayload {
   info: CloudFredSeriesInfoPayload | null;
 }
 
+export interface CloudShortInterestPointPayload {
+  settlementDate: string;
+  sharesShort: number;
+  previousSharesShort: number | null;
+  averageDailyVolume: number | null;
+  daysToCover: number | null;
+  changePercent: number | null;
+  revised: boolean;
+}
+
+export interface CloudShortInterestPayload {
+  symbol: string;
+  issueName: string | null;
+  points: CloudShortInterestPointPayload[];
+}
+
 export interface CloudYieldPointPayload {
   maturity: string;
   maturityYears: number;
   yield: number | null;
+  /** FRED observation date. Absent on servers older than the field. */
+  asOf?: string | null;
 }
 
 type CloudCongressTradeSide = "BUY" | "SELL" | "EXCHANGE" | "OTHER";
@@ -626,6 +644,76 @@ export type DeviceAuthTokenResponse =
   | { status: "denied" }
   | { status: "expired" }
   | { status: "approved"; sessionToken: string; user: AuthUser };
+
+/** Shared server-computed scanners fanned out to every subscriber. */
+export type ScannerKind = "hilo" | "flow";
+
+export type ScannerStatus = "live" | "starting" | "closed" | "degraded";
+
+export interface ScannerWindowCounts {
+  highs: number;
+  lows: number;
+}
+
+export interface ScannerHiloExtreme {
+  symbol: string;
+  price: number;
+  volume?: number | null;
+  /** Times this symbol printed a new session extreme today. */
+  count: number;
+  at: number;
+}
+
+/** Which entitlement tier produced the payload: free accounts get a delayed instance. */
+export interface ScannerAccessInfo {
+  access: "realtime" | "delayed";
+  /** 0 on the realtime instance, 15 on the delayed one. */
+  delayMinutes: number;
+}
+
+export interface ScannerHiloPayload extends ScannerAccessInfo {
+  status: ScannerStatus;
+  asOf: number;
+  windows: {
+    s30: ScannerWindowCounts;
+    m1: ScannerWindowCounts;
+    m5: ScannerWindowCounts;
+  };
+  highs: ScannerHiloExtreme[];
+  lows: ScannerHiloExtreme[];
+}
+
+export interface ScannerFlowEvent {
+  id: string;
+  at: number;
+  underlying: string;
+  contract: string;
+  right: "C" | "P";
+  strike: number;
+  expiry: string;
+  side: "ask" | "bid" | "mid" | "unknown";
+  kind: "sweep" | "block" | "split" | "trade";
+  size: number;
+  price: number;
+  premium: number;
+  volume?: number | null;
+  openInterest?: number | null;
+  volOi?: number | null;
+  iv?: number | null;
+}
+
+export interface ScannerFlowPayload extends ScannerAccessInfo {
+  status: ScannerStatus;
+  asOf: number;
+  events: ScannerFlowEvent[];
+}
+
+export type ScannerPayload = ScannerHiloPayload | ScannerFlowPayload;
+
+/** What a scanner subscriber receives: data, or the entitlement refusal. */
+export type ScannerFeedEvent<T extends ScannerPayload = ScannerPayload> =
+  | { type: "data"; payload: T }
+  | { type: "denied"; reason: string };
 
 export interface QuoteStreamTarget {
   symbol: string;

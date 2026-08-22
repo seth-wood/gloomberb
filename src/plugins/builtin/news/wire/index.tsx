@@ -17,6 +17,12 @@ import { NewsPresetPane } from "./news/preset-pane";
 import { NEWS_QUERY_PRESETS } from "./news/query-presets";
 import type { NewsColumnId, NewsSortPreference } from "./news/table";
 import { createRssNewsCapability } from "./rss/source";
+import { openUrl } from "../../../../components/ui/external-link";
+import {
+  cachedNewsArticles,
+  loadNewsArticles,
+  searchNewsArticles,
+} from "./article-search";
 
 interface NewsPresetPaneConfig {
   paneKey: string;
@@ -38,20 +44,20 @@ const TopPane = createNewsPresetPane({
   paneKey: "top",
   title: "Top News",
   query: NEWS_QUERY_PRESETS.top,
-  columns: ["time", "title", "tickers", "importance"],
+  columns: ["time", "source", "title", "tickers", "categories", "importance"],
   defaultSort: { columnId: "importance", direction: "desc" },
   emptyStateTitle: "No top stories yet",
-  emptyStateHint: "Try refreshing later as new headlines are ranked.",
+  emptyStateHint: "Run the Add News Feed command to wire up another source.",
 });
 
 const FeedPane = createNewsPresetPane({
   paneKey: "feed",
   title: "News Feed",
   query: NEWS_QUERY_PRESETS.feed,
-  columns: ["time", "source", "title", "tickers", "categories"],
+  columns: ["time", "source", "title", "tickers", "categories", "sentiment"],
   defaultSort: { columnId: "time", direction: "desc" },
   emptyStateTitle: "No feed stories yet",
-  emptyStateHint: "Try refreshing later as wire stories arrive.",
+  emptyStateHint: "Run the Add News Feed command to wire up another source.",
 });
 
 let disposeBreakingNewsNotifications: (() => void) | null = null;
@@ -98,6 +104,37 @@ export const newsWireModule: PluginModule = {
       { persistence: ctx.persistence },
     );
     ctx.registerCapability(source);
+
+    ctx.registerCommand({
+      id: "open-news-article",
+      label: "Open Article",
+      description: "Search loaded news headlines by topic, e.g. ART hormuz.",
+      keywords: ["article", "news", "rss", "headline", "story", "open"],
+      category: "navigation",
+      shortcut: "ART",
+      shortcutArg: {
+        placeholder: "headline or topic",
+        kind: "text",
+        parse: (arg) => ({ query: arg.trim() }),
+      },
+      async execute(values) {
+        const query = values?.query ?? values?.shortcut ?? "";
+        const articles = cachedNewsArticles().length > 0
+          ? cachedNewsArticles()
+          : await loadNewsArticles();
+        const match = searchNewsArticles(articles, query)[0];
+        if (!match) {
+          ctx.notify({
+            body: query.trim()
+              ? `No article matched "${query.trim()}".`
+              : "No articles loaded yet.",
+            type: "error",
+          });
+          return;
+        }
+        openUrl(match.url);
+      },
+    });
 
     ctx.registerCommand({
       id: "add-news-feed",

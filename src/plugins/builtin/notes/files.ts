@@ -56,11 +56,17 @@ export class NotesFiles {
     return joinPath(this.dataDir, `${symbol}.md`);
   }
 
+  /**
+   * A note that was never written is empty, but any other read failure is
+   * rethrown: an unreadable note must not present itself as an empty editable
+   * one, or the next save silently overwrites real content.
+   */
   async load(symbol: string): Promise<string> {
     try {
       return await readTextFile(this.pathFor(symbol));
-    } catch {
-      return "";
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return "";
+      throw error;
     }
   }
 
@@ -71,8 +77,8 @@ export class NotesFiles {
   async delete(symbol: string): Promise<void> {
     try {
       await deleteTextFile(this.pathFor(symbol));
-    } catch {
-      // ignore missing files
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 

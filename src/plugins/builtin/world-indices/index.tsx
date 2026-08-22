@@ -1,37 +1,46 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTableView } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
-import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion } from "./indices";
+import { useQuoteBoard } from "../shared/use-quote-board";
+import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
 import {
   buildFlatRows,
   DEFAULT_SORT_PREFERENCE,
   nextSortPreference,
-  type IndexQuoteState,
-  type QuoteMap,
   type WorldIndexSortPreference,
   type WorldIndexTableRow,
 } from "./model";
 import {
   createWorldIndexColumns,
   renderWorldIndexCell,
+  usesSessionText,
   type WorldIndexColumn,
 } from "./table";
 
-const REFRESH_INTERVAL_MS = 60_000;
+/** Stable identity: a fresh literal here would remount the board every render. */
+const NO_SAVED_SYMBOLS: string[] = [];
 
 function WorldIndicesPane({ focused, width, height }: PaneProps) {
-  const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
-  const [quotes, setQuotes] = useState<QuoteMap>(new Map());
+  const dataProvider = useAssetData();
+  const [savedSymbols] = usePaneSettingValue<string[]>("symbols", NO_SAVED_SYMBOLS);
+  const entries = useMemo(() => resolveIndexEntries(savedSymbols), [savedSymbols]);
+  const symbols = useMemo(() => entries.map((entry) => entry.symbol), [entries]);
+  // One cadence, the one the user configured, instead of a private 60s timer.
+  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
+  const { quotes, refresh } = useQuoteBoard(
+    symbols,
+    Math.max(1, refreshIntervalMinutes || 1) * 60_000,
+  );
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<WorldIndexSortPreference>(DEFAULT_SORT_PREFERENCE);
-  const fetchGenRef = useRef(0);
 
-  const indicesByRegion = useMemo(() => getIndicesByRegion(), []);
+  const indicesByRegion = useMemo(() => getIndicesByRegion(entries), [entries]);
   const flatRows = useMemo(
     () => buildFlatRows(indicesByRegion, sortPreference, quotes),
     [indicesByRegion, quotes, sortPreference],
@@ -48,84 +57,6 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       setSelectedSymbol(null);
     }
   }, [flatRows, selectedFlatIdx, selectedSymbol]);
-
-  const fetchAll = useCallback(() => {
-    if (!dataProvider) return;
-
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-
-    setQuotes((prev) => {
-      const next = new Map(prev);
-      for (const entry of WORLD_INDICES) {
-        const existing = next.get(entry.symbol);
-        next.set(entry.symbol, { quote: existing?.quote ?? null, loading: true, error: null });
-      }
-      return next;
-    });
-
-    const loadQuotes = async (): Promise<QuoteMap> => {
-      const next = new Map<string, IndexQuoteState>();
-      if (dataProvider.getQuotesBatch) {
-        const results = await dataProvider.getQuotesBatch(
-          WORLD_INDICES.map((entry) => ({ symbol: entry.symbol, exchange: "" })),
-        );
-        const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
-        for (const entry of WORLD_INDICES) {
-          const result = bySymbol.get(entry.symbol);
-          next.set(entry.symbol, {
-            quote: result?.quote ?? null,
-            loading: false,
-            error: result?.error
-              ? result.error instanceof Error ? result.error.message : String(result.error)
-              : null,
-          });
-        }
-        return next;
-      }
-
-      await Promise.all(WORLD_INDICES.map(async (entry) => {
-        try {
-          const quote = await dataProvider.getQuote(entry.symbol, "");
-          next.set(entry.symbol, { quote, loading: false, error: null });
-        } catch (err: unknown) {
-          next.set(entry.symbol, {
-            quote: null,
-            loading: false,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }));
-      return next;
-    };
-
-    loadQuotes().then((nextQuotes) => {
-      if (fetchGenRef.current !== gen) return;
-      setQuotes((prev) => {
-        const next = new Map(prev);
-        for (const [symbol, state] of nextQuotes) {
-          next.set(symbol, state);
-        }
-        return next;
-      });
-    }).catch((err: unknown) => {
-      if (fetchGenRef.current !== gen) return;
-      const message = err instanceof Error ? err.message : String(err);
-      setQuotes((prev) => {
-        const next = new Map(prev);
-        for (const entry of WORLD_INDICES) {
-          next.set(entry.symbol, { quote: null, loading: false, error: message });
-        }
-        return next;
-      });
-    });
-  }, [dataProvider]);
-
-  useEffect(() => {
-    fetchAll();
-    const interval = setInterval(fetchAll, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchAll]);
 
   const openSelected = useCallback((flatIdx: number) => {
     const row = flatRows[flatIdx];
@@ -145,16 +76,17 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
 
   const columns = useMemo<WorldIndexColumn[]>(() => createWorldIndexColumns(width), [width]);
 
+  const sessionText = usesSessionText(width);
   const renderCell = useCallback((
     row: WorldIndexTableRow,
     column: WorldIndexColumn,
     _index: number,
     rowState: { selected: boolean },
   ) => {
-    return renderWorldIndexCell(row, column, rowState, quotes);
-  }, [quotes]);
+    return renderWorldIndexCell(row, column, rowState, quotes, { sessionText });
+  }, [quotes, sessionText]);
 
-  useWorldIndicesFooter(quotes);
+  useWorldIndicesFooter(quotes, refresh, focused);
 
   return (
     <DataTableView<WorldIndexTableRow, WorldIndexColumn>
@@ -172,7 +104,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       columns={columns}
-      items={flatRows}
+      items={dataProvider ? flatRows : []}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
       onHeaderClick={handleHeaderClick}
@@ -181,7 +113,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
         ? { text: REGION_LABELS[row.region] }
         : null}
       renderCell={renderCell}
-      emptyStateTitle="No indices configured."
+      emptyStateTitle="No market data provider connected."
     />
   );
 }
@@ -195,7 +127,26 @@ export const worldIndicesModule: PluginModule = {
       component: WorldIndicesPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      defaultFloatingSize: { width: 72, height: 32 },
+      defaultFloatingSize: { width: 96, height: 32 },
+      // Resolved per open so the dialog shows the full board until the user
+      // saves a narrower selection.
+      settings: (context) => ({
+        title: "World Indices Settings",
+        values: {
+          symbols: resolveIndexEntries(context.settings.symbols as string[] | undefined)
+            .map((entry) => entry.symbol),
+        },
+        fields: [{
+          key: "symbols",
+          label: "Indices",
+          type: "ordered-multi-select",
+          options: WORLD_INDICES.map((entry) => ({
+            value: entry.symbol,
+            label: entry.shortName,
+            description: entry.name,
+          })),
+        }],
+      }),
     },
   ],
 

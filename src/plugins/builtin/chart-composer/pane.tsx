@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import {
   ChoiceDialog,
   Tabs,
@@ -13,9 +13,10 @@ import {
 import { CompositeChart } from "../../../components/chart/composite";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
-import type { ChartSpec, ResolvedSeries, SeriesStyle } from "../../../time-series/types";
+import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
 import { getSupportedChartResolutionsForViewport } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
+import { chartSeriesSourceKey } from "../../../capabilities";
 import { useShortcut } from "../../../react/input";
 import { useDialog, useDialogState, type PromptContext } from "../../../ui/dialog";
 import {
@@ -28,7 +29,6 @@ import { colors } from "../../../theme/colors";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
-import { DateWindowDialog, type DateWindowDialogResult } from "./date-window-dialog";
 import { chartComposerSemanticMetadata } from "./semantic";
 import {
   canToggleChartSeries,
@@ -40,7 +40,6 @@ import {
 import {
   buildEmptyChartPreset,
   buildPriceChartPreset,
-  applySeriesStyle,
   chartSeriesLabel,
   defaultFinancialTimestampMode,
   getSelectedBuiltinStudies,
@@ -56,12 +55,13 @@ import {
   CHART_RANGES as RANGES,
   CHART_RESOLUTIONS as RESOLUTIONS,
   CHART_STUDY_OPTIONS,
-  getChartInlineStyles,
-  getChartInlineStyleTarget,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { usePublicShare } from "../shared/public-share";
+import { buildChartShareData } from "../../../shares/chart-snapshot";
+import { isPlainKey } from "../../../utils/keyboard";
 
 const RANGE_TABS = RANGES.map((range, index) => ({ label: `${index + 1}:${range}`, value: range }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
@@ -110,6 +110,7 @@ function ChartComposerSurface({
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const { publicSharing } = useUiCapabilities();
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -130,7 +131,9 @@ function ChartComposerSurface({
             ?? defaultFinancialTimestampMode(entry.source.fieldId)
             ?? "",
         ]
-      : [entry.id, entry.source.kind, entry.source.seriesId]),
+      : entry.source.kind === "economic"
+        ? [entry.id, entry.source.kind, entry.source.seriesId]
+        : [entry.id, entry.source.kind, chartSeriesSourceKey(entry.source)]),
   }), [spec.series, spec.viewport.dateWindow, spec.viewport.maxPoints, spec.viewport.range, spec.viewport.resolution]);
   const [runtimeViewportState, setRuntimeViewportState] = useState<{
     key: string;
@@ -182,10 +185,6 @@ function ChartComposerSurface({
   );
   const selectedStudies = getSelectedBuiltinStudies(spec);
   const selectedPairStudies = getSelectedPairStudies(spec);
-  const inlineStyleTarget = useMemo(() => getChartInlineStyleTarget(spec), [spec]);
-  const styles = useMemo(() => getChartInlineStyles(spec), [spec]);
-  const inlineStyle = inlineStyleTarget?.style ?? "line";
-  const inlineStyleLabel = inlineStyleTarget ? chartSeriesLabel(inlineStyleTarget) : "";
   const viewport = resolution.viewport;
   const baseSeriesIds = useMemo(() => new Set(spec.series.map((series) => series.id)), [spec.series]);
   // Hidden series are never loaded, so the resolver has nothing to report for
@@ -225,6 +224,11 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
+  const shareData = useMemo(() => buildChartShareData(plottedSeries), [plottedSeries]);
+  const createPublicShare = usePublicShare();
+  const shareChart = useCallback(() => {
+    if (shareData) void createPublicShare({ kind: "chart", data: shareData });
+  }, [createPublicShare, shareData]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -346,31 +350,6 @@ function ChartComposerSurface({
       viewport: { ...spec.viewport, range, dateWindow: undefined, maxPoints: undefined },
     });
   }, [setSpec, spec]);
-  const openDateWindow = useCallback(async () => {
-    setInteractionCaptured("prompt", true);
-    try {
-      const result = await dialog.prompt<DateWindowDialogResult>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<DateWindowDialogResult>) => (
-          <DateWindowDialog {...context} initial={spec.viewport.dateWindow} />
-        ),
-      }).catch(() => null);
-      if (result?.kind === "apply") {
-        setSpec({
-          ...spec,
-          viewport: {
-            ...spec.viewport,
-            dateWindow: { start: result.start, end: result.end },
-            maxPoints: undefined,
-          },
-        });
-      } else if (result?.kind === "clear") {
-        setSpec({ ...spec, viewport: { ...spec.viewport, dateWindow: undefined } });
-      }
-    } finally {
-      setInteractionCaptured("prompt", false);
-    }
-  }, [dialog, setInteractionCaptured, setSpec, spec]);
   const setResolution = useCallback((next: ChartResolution) => {
     setSpec({ ...spec, viewport: { ...spec.viewport, resolution: next } });
   }, [setSpec, spec]);
@@ -383,15 +362,6 @@ function ChartComposerSurface({
     }
     setResolution("auto");
   }, [availableResolutions, setResolution, spec.viewport.resolution]);
-  const setInlineStyle = useCallback((style: SeriesStyle) => {
-    if (!inlineStyleTarget || !styles.includes(style)) return;
-    setSpec({
-      ...spec,
-      series: spec.series.map((series) => (
-        series.id === inlineStyleTarget.id ? applySeriesStyle(series, style) : series
-      )),
-    });
-  }, [inlineStyleTarget, setSpec, spec, styles]);
   const openRangePicker = useCallback(async () => {
     setInteractionCaptured("prompt", true);
     try {
@@ -446,30 +416,6 @@ function ChartComposerSurface({
     setResolution,
     spec.viewport.resolution,
   ]);
-  const openModePicker = useCallback(async () => {
-    if (styles.length === 0) return;
-    setInteractionCaptured("prompt", true);
-    try {
-      const next = await dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => (
-          <ChoiceDialog
-            {...context}
-            title={`${inlineStyleLabel} Style`}
-            selectedChoiceId={inlineStyle}
-            choices={styles.map((value) => ({
-              id: value,
-              label: value.toUpperCase(),
-              description: `Draw ${inlineStyleLabel} as ${value}.`,
-            }))}
-          />
-        ),
-      }).catch(() => "");
-      if (styles.includes(next as SeriesStyle)) setInlineStyle(next as SeriesStyle);
-    } finally {
-      setInteractionCaptured("prompt", false);
-    }
-  }, [dialog, inlineStyle, inlineStyleLabel, setInlineStyle, setInteractionCaptured, styles]);
   const toggleSeries = useCallback((seriesId: string) => {
     const next = toggleChartSeries(spec, seriesId);
     if (next !== spec) setSpec(next);
@@ -490,29 +436,29 @@ function ChartComposerSurface({
   }, []);
   const currentActionsRef = useRef({
     openSeriesEditor,
-    openDateWindow,
-    openModePicker,
     openResolutionPicker,
     openRangePicker,
     reload: resolution.reload,
   });
   currentActionsRef.current = {
     openSeriesEditor,
-    openDateWindow,
-    openModePicker,
     openResolutionPicker,
     openRangePicker,
     reload: resolution.reload,
   };
   const footerSeries = useCallback(() => { void currentActionsRef.current.openSeriesEditor(); }, []);
-  const footerDates = useCallback(() => { void currentActionsRef.current.openDateWindow(); }, []);
-  const footerMode = useCallback(() => { void currentActionsRef.current.openModePicker(); }, []);
   const footerResolution = useCallback(() => { void currentActionsRef.current.openResolutionPicker(); }, []);
+  const footerReload = useCallback(() => { currentActionsRef.current.reload(); }, []);
   const footerRange = useCallback(() => { void currentActionsRef.current.openRangePicker(); }, []);
-  const footerReload = useCallback(() => currentActionsRef.current.reload(), []);
 
   useShortcut((event) => {
     if (interactionCaptureRef.current || dialogOpen) return;
+    if (publicSharing && shareData && isPlainKey(event, "y")) {
+      event.preventDefault();
+      event.stopPropagation();
+      shareChart();
+      return;
+    }
     const shortcut = resolveChartComposerShortcut(event, RANGES.length);
     if (!shortcut) return;
     event.preventDefault();
@@ -528,12 +474,6 @@ function ChartComposerSurface({
         return;
       case "series":
         void openSeriesEditor();
-        return;
-      case "dates":
-        void openDateWindow();
-        return;
-      case "mode":
-        void openModePicker();
         return;
       case "resolution":
         void openResolutionPicker();
@@ -552,15 +492,13 @@ function ChartComposerSurface({
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
-      { id: "dates", key: "w", label: "indow", onPress: footerDates },
-      { id: "mode", key: "m", label: "ode", onPress: footerMode, disabled: styles.length === 0 },
-      { id: "resolution", key: "r", label: "es", onPress: footerResolution },
+      { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       { id: "range", key: "1-8", label: "range", onPress: footerRange },
-      { id: "reload", key: "Shift+R", label: "reload", onPress: footerReload },
+      ...(publicSharing
+        ? [{ id: "share", key: "y", label: " share", onPress: shareChart, disabled: !shareData }]
+        : []),
     ],
   }), [
-    footerDates,
-    footerMode,
     footerRange,
     footerReload,
     footerResolution,
@@ -569,10 +507,12 @@ function ChartComposerSurface({
     indicatorsDisabled,
     openFormulas,
     openIndicators,
+    publicSharing,
+    shareChart,
+    shareData,
     resolution.errors,
     resolution.loading,
     resolution.warnings,
-    styles.length,
   ]);
 
   const emptyMessage = spec.series.length === 0

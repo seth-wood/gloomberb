@@ -12,11 +12,14 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import type { ResolvedSeries } from "../../../time-series/types";
+import { downsampleCompositeChartScene } from "./downsample";
+import { reuseResolvedSeriesList } from "./panel-series";
 import {
   consumeChartMouseEvent,
   getGlobalMouseX,
@@ -24,6 +27,7 @@ import {
   type ChartMouseEvent,
 } from "../core/pointer";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
+import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
 import {
   useStaticChartBitmapSize,
   type StaticChartBitmapSize,
@@ -34,6 +38,7 @@ import {
   compositeAxisTicks,
   formatCompositeAxisValue,
   formatCompositeCursorDate,
+  formatCompositeCursorValue,
   formatCompositePointDetails,
   formatCompositeSeriesValue,
   formatCompositeTimeAxisDate,
@@ -287,7 +292,7 @@ function cursorAxisLabel(
   const domain = panel.axes[side];
   if (!domain || cursorYRatio === null) return null;
   const value = unprojectCompositeValue(cursorYRatio, domain);
-  return value === null ? null : formatCompositeAxisValue(value, domain);
+  return value === null ? null : formatCompositeCursorValue(value, domain);
 }
 
 const MINIMUM_AXIS_LABEL_WIDTH = 3;
@@ -611,6 +616,7 @@ interface CompositePanelSurfaceProps {
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
   onToolSpanChange: (span: ChartToolSpan | null) => void;
+  showTextFallback: boolean;
 }
 
 function CompositePanelSurface({
@@ -637,6 +643,7 @@ function CompositePanelSurface({
   onZoomViewport,
   onSetViewport,
   onToolSpanChange,
+  showTextFallback,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
@@ -701,10 +708,10 @@ function CompositePanelSurface({
         domain: measureDomain,
       }),
       startValueLabel: measureDomain && startValue !== null
-        ? formatCompositeAxisValue(startValue, measureDomain)
+        ? formatCompositeCursorValue(startValue, measureDomain)
         : null,
       endValueLabel: measureDomain && endValue !== null
-        ? formatCompositeAxisValue(endValue, measureDomain)
+        ? formatCompositeCursorValue(endValue, measureDomain)
         : null,
     };
   }, [measureDomain, scene, toolDrag]);
@@ -787,10 +794,10 @@ function CompositePanelSurface({
     toolReadout?.direction,
   ]);
   const textLines = useMemo(
-    () => isDesktopWeb
+    () => isDesktopWeb || !showTextFallback
       ? []
       : renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, activeCursorYRatio),
-    [activeCursorYRatio, isDesktopWeb, panel, plotWidth, scene.cursorXRatio],
+    [activeCursorYRatio, isDesktopWeb, panel, plotWidth, scene.cursorXRatio, showTextFallback],
   );
   const leftAxisLabels = useMemo(
     () => axisLabelRows(
@@ -1364,6 +1371,52 @@ function CompositeLegend({
   );
 }
 
+const CHART_DRAWINGS_SETTING_KEY = "chartDrawings";
+const NO_DRAWINGS: readonly ChartDrawing[] = [];
+/** Coalesces a drag into one write instead of one per pointer move. */
+const DRAWING_PERSIST_DELAY_MS = 400;
+
+/**
+ * Drawings are anchored to data, so they outlive the mounted chart: they ride
+ * along with the pane settings that already carry the chart spec. Only mounted
+ * inside a pane, so a standalone chart still renders without app state.
+ */
+function ChartDrawingStore({
+  paneInstanceId,
+  drawings,
+  onRestore,
+}: {
+  paneInstanceId: string;
+  drawings: readonly ChartDrawing[];
+  onRestore: (drawings: readonly ChartDrawing[]) => void;
+}) {
+  const [stored, setStored] = usePaneSettingValue<readonly ChartDrawing[]>(
+    CHART_DRAWINGS_SETTING_KEY,
+    NO_DRAWINGS,
+    paneInstanceId,
+  );
+  const restoredRef = useRef<readonly ChartDrawing[] | null>(null);
+  if (restoredRef.current === null) {
+    restoredRef.current = Array.isArray(stored) ? stored : NO_DRAWINGS;
+  }
+
+  useEffect(() => {
+    const restored = restoredRef.current;
+    if (restored && restored.length > 0) onRestore(restored);
+    // Restoring once on mount: later writes must not scroll back in time.
+  }, []);
+
+  useEffect(() => {
+    const restored = restoredRef.current ?? NO_DRAWINGS;
+    if (drawings === restored) return;
+    if (drawings.length === 0 && restored.length === 0) return;
+    const timer = setTimeout(() => setStored(drawings), DRAWING_PERSIST_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [drawings, setStored]);
+
+  return null;
+}
+
 export function CompositeChart({
   series,
   legendSeries,
@@ -1392,15 +1445,15 @@ export function CompositeChart({
   onToggleSeries,
   isSeriesToggleable,
 }: CompositeChartProps) {
-  const { cellWidthPx = 8 } = useUiCapabilities();
+  const { cellWidthPx = 8, pixelRatio = 1 } = useUiCapabilities();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const showTextFallback = useShowChartTextFallback();
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
   const [toolSpan, setToolSpan] = useState<ChartToolSpan | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
-  // ponytail: drawings live with the mounted chart. Persisting them belongs with
-  // pane settings, which is a separate plumbing job.
-  const [drawings, setDrawings] = useState<readonly ChartDrawing[]>([]);
+  const paneInstanceId = useOptionalPaneInstanceId();
+  const [drawings, setDrawings] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [drawColor, setDrawColor] = useState<string>(CHART_DRAWING_COLORS[0]);
   const addDrawing = useCallback((drawing: ChartDrawing) => {
@@ -1433,7 +1486,10 @@ export function CompositeChart({
   const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
-  const visibleSeries = useMemo(() => series.filter((entry) => entry.points.length > 0), [series]);
+  const seriesIdentityRef = useRef<ResolvedSeries[]>([]);
+  const stableSeries = reuseResolvedSeriesList(seriesIdentityRef.current, series);
+  seriesIdentityRef.current = stableSeries;
+  const visibleSeries = useMemo(() => stableSeries.filter((entry) => entry.points.length > 0), [stableSeries]);
   const marketTimelineSeries = useMemo(() => {
     const supplied = timelineSeries?.filter((entry) => entry.points.length > 0) ?? [];
     return supplied.some((entry) => entry.timeBasis?.kind === "market")
@@ -1629,6 +1685,11 @@ export function CompositeChart({
     : 0;
   const timeAxisRows = showTimeAxis ? 1 : 0;
   const panelCount = new Set(visibleSeries.map((entry) => entry.panelId)).size;
+  const lastTickKey = visibleSeries.map((entry) => {
+    const last = entry.points.at(-1);
+    if (!last) return entry.id;
+    return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${entry.latestChangePercent ?? ""}`;
+  }).join("|");
   const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows);
   const resolvedColors = useMemo<CompositeChartColors>(() => ({
     background: colors?.background ?? themeColors.bg,
@@ -1638,12 +1699,16 @@ export function CompositeChart({
     textDim: colors?.textDim ?? themeColors.textDim,
     negative: colors?.negative ?? themeColors.negative,
   }), [colors]);
-  const projectedScene = useMemo(() => buildCompositeChartScene(visibleSeries, panels, {
-    width: 1,
-    height: Math.max(panelCount, 1),
-    viewport: effectiveViewport ?? undefined,
-    timelineSeries: marketTimelineSeries,
-  }), [effectiveViewport, marketTimelineSeries, panelCount, panels, visibleSeries]);
+  const projectedScene = useMemo(() => {
+    // lastTickKey busts this memo when a live tick mutates series identity in place.
+    void lastTickKey;
+    return buildCompositeChartScene(visibleSeries, panels, {
+      width: 1,
+      height: Math.max(panelCount, 1),
+      viewport: effectiveViewport ?? undefined,
+      timelineSeries: marketTimelineSeries,
+    });
+  }, [effectiveViewport, lastTickKey, marketTimelineSeries, panelCount, panels, visibleSeries]);
   // Gutters follow the axes the scene actually built. Reading the series list
   // instead drops a gutter the moment its series has no observation in view,
   // which is exactly what a zoom does, taking the axis labels with it.
@@ -1673,6 +1738,10 @@ export function CompositeChart({
   const horizontalReserved = leftAxisWidth + rightAxisWidth
     + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0));
   const plotWidth = Math.max(1, totalWidth - horizontalReserved);
+  const downsampleWidth = Math.max(
+    1,
+    Math.round(plotWidth * cellWidthPx * Math.max(1, pixelRatio)),
+  );
   const layoutPanels = useMemo<CompositePanelScene[] | null>(() => {
     if (!projectedScene) return null;
     const panelSpecById = new Map(panels.map((panel) => [panel.id, panel] as const));
@@ -1690,13 +1759,14 @@ export function CompositeChart({
   }, [panels, plotHeight, projectedScene]);
   const baseScene = useMemo<CompositeChartScene | null>(() => {
     if (!projectedScene || !layoutPanels) return null;
-    return {
+    const laidOut: CompositeChartScene = {
       ...projectedScene,
       width: plotWidth,
       height: layoutPanels.reduce((sum, panel) => sum + panel.height, 0),
       panels: layoutPanels,
     };
-  }, [layoutPanels, plotWidth, projectedScene]);
+    return downsampleCompositeChartScene(laidOut, downsampleWidth);
+  }, [downsampleWidth, layoutPanels, plotWidth, projectedScene]);
   const resolvedCursorTimestamp = resolvedCursorDate?.getTime() ?? null;
   const normalizedCursorTimestamp = resolvedCursorTimestamp !== null && Number.isFinite(resolvedCursorTimestamp)
     ? resolvedCursorTimestamp
@@ -1988,6 +2058,13 @@ export function CompositeChart({
           }}
         />
       ) : null}
+      {paneInstanceId ? (
+        <ChartDrawingStore
+          paneInstanceId={paneInstanceId}
+          drawings={drawings}
+          onRestore={setDrawings}
+        />
+      ) : null}
       {scene.panels.map((panel) => (
         <CompositePanelSurface
           key={panel.id}
@@ -2014,6 +2091,7 @@ export function CompositeChart({
           onZoomViewport={zoomViewport}
           onSetViewport={setViewportRange}
           onToolSpanChange={setToolSpan}
+          showTextFallback={showTextFallback}
         />
       ))}
       {timeAxisLayout ? (

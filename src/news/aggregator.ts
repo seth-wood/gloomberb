@@ -1,4 +1,5 @@
 import type { NewsCapability } from "../capabilities";
+import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
 import {
   DEFAULT_GLOBAL_QUERY,
@@ -16,21 +17,25 @@ import {
 export { buildNewsQueryKey } from "./news-model";
 
 export interface NewsServiceOptions {
-  pollIntervalMs?: number;
+  /** Pass a function to follow the user's configured refresh interval. */
+  pollIntervalMs?: number | (() => number);
   inactiveQueryTtlMs?: number;
   maxInactiveQueries?: number;
   now?: () => number;
+  connectionHealth?: ConnectionHealthRegistry;
 }
 
 export type NewsQueryListener = (state: NewsQueryState) => void;
 
 const DEFAULT_POLL_INTERVAL_MS = 2 * 60 * 1000;
+const MIN_POLL_INTERVAL_MS = 15 * 1000;
 const DEFAULT_INACTIVE_QUERY_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_INACTIVE_QUERIES = 50;
 
 interface SourceFetchResult {
   articles: NewsArticle[];
   sourceIds: string[];
+  failedSourceIds: string[];
 }
 
 interface NewsQueryEntry {
@@ -55,23 +60,27 @@ export class NewsService {
   private readonly queries = new Map<string, NewsQueryEntry>();
   private articles: NewsArticle[] = [];
   private version = 0;
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly pollIntervalMs: number;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private polling = false;
+  private readonly pollIntervalMs: () => number;
   private readonly inactiveQueryTtlMs: number;
   private readonly maxInactiveQueries: number;
   private readonly now: () => number;
+  private readonly connectionHealth?: ConnectionHealthRegistry;
 
   constructor(options: NewsServiceOptions = {}) {
-    this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    const pollInterval = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.pollIntervalMs = typeof pollInterval === "function" ? pollInterval : () => pollInterval;
     this.inactiveQueryTtlMs = Math.max(1, options.inactiveQueryTtlMs ?? DEFAULT_INACTIVE_QUERY_TTL_MS);
     this.maxInactiveQueries = Math.max(1, Math.floor(options.maxInactiveQueries ?? DEFAULT_MAX_INACTIVE_QUERIES));
     this.now = options.now ?? Date.now;
+    this.connectionHealth = options.connectionHealth;
   }
 
   register(source: NewsCapability): () => void {
     this.sources.set(source.id, source);
     this.seedCachedSource(source);
-    if (this.pollTimer !== null) {
+    if (this.polling) {
       void this.pollActiveQueries();
     }
     return () => {
@@ -86,15 +95,27 @@ export class NewsService {
   }
 
   start(): void {
-    if (this.pollTimer !== null) return;
-    this.pollTimer = setInterval(() => void this.pollActiveQueries(), this.pollIntervalMs);
+    if (this.polling) return;
+    this.polling = true;
+    this.scheduleNextPoll();
   }
 
   stop(): void {
+    this.polling = false;
     if (this.pollTimer !== null) {
-      clearInterval(this.pollTimer);
+      clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
+  }
+
+  /** Rescheduled every cycle so a config change takes effect on the next tick. */
+  private scheduleNextPoll(): void {
+    if (!this.polling) return;
+    const interval = Math.max(MIN_POLL_INTERVAL_MS, this.pollIntervalMs());
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = null;
+      void this.pollActiveQueries().catch(() => {}).then(() => this.scheduleNextPoll());
+    }, interval);
   }
 
   subscribe(listener: () => void): () => void {
@@ -110,8 +131,10 @@ export class NewsService {
 
     const emit = () => listener(this.queries.get(key)?.state ?? createIdleNewsQueryState());
     const unsubscribe = this.subscribe(emit);
+    // Show loading before emitting: the fetch below starts immediately, and an
+    // idle first frame paints an empty pane instead of a loading one.
+    void this.refreshQuery(normalized, true);
     emit();
-    void this.refreshQuery(normalized, false);
 
     let disposed = false;
     return () => {
@@ -152,7 +175,11 @@ export class NewsService {
 
     for (const source of sources) {
       try {
-        const article = await source.provider.fetchNewsStory?.(storyId);
+        const article = await this.trackSourceRequest(
+          source,
+          "fetchNewsStory",
+          () => source.provider.fetchNewsStory?.(storyId) ?? Promise.resolve(null),
+        );
         if (!article) continue;
         this.mergeStoryDetail(article);
         return article;
@@ -197,11 +224,18 @@ export class NewsService {
     const promise = (async () => {
       try {
         const result = await this.fetchFromSources(query);
+        if (result.sourceIds.length === 0 && result.failedSourceIds.length > 0) {
+          throw new Error("News sources unavailable.");
+        }
         const articles = filterNewsArticlesForQuery(dedupeNewsArticles(result.articles), query);
         const state: NewsQueryState = {
           phase: "ready",
           articles,
-          error: null,
+          // A partial failure still has stories, so it stays ready and reports
+          // the gap instead of pretending the feed is complete.
+          error: result.failedSourceIds.length > 0
+            ? `${result.failedSourceIds.length} of ${result.failedSourceIds.length + result.sourceIds.length} news sources unavailable.`
+            : null,
           updatedAt: this.now(),
           sourceIds: result.sourceIds,
         };
@@ -287,36 +321,58 @@ export class NewsService {
 
   private async fetchTickerNews(query: NewsQuery, sources: NewsCapability[]): Promise<SourceFetchResult> {
     let firstEmpty: SourceFetchResult | null = null;
+    const failedSourceIds: string[] = [];
     for (const source of sources) {
       try {
-        const articles = (await source.provider.fetchNews(query))
-          .map((article) => markDetailCapableArticle(source, article));
-        const result = { articles, sourceIds: [newsCapabilitySourceId(source)] };
+        const articles = (await this.trackSourceRequest(
+          source,
+          "fetchNews",
+          () => source.provider.fetchNews(query),
+        )).map((article) => markDetailCapableArticle(source, article));
+        const result = { articles, sourceIds: [newsCapabilitySourceId(source)], failedSourceIds };
         if (articles.length > 0) return result;
         firstEmpty ??= result;
       } catch {
-        // Continue to lower-priority sources.
+        failedSourceIds.push(newsCapabilitySourceId(source));
       }
     }
-    return firstEmpty ?? { articles: [], sourceIds: [] };
+    return firstEmpty ?? { articles: [], sourceIds: [], failedSourceIds };
   }
 
   private async fetchMergedNews(query: NewsQuery, sources: NewsCapability[]): Promise<SourceFetchResult> {
     const settled = await Promise.allSettled(
       sources.map(async (source) => ({
         source,
-        articles: (await source.provider.fetchNews(query))
-          .map((article) => markDetailCapableArticle(source, article)),
+        articles: (await this.trackSourceRequest(
+          source,
+          "fetchNews",
+          () => source.provider.fetchNews(query),
+        )).map((article) => markDetailCapableArticle(source, article)),
       })),
     );
     const articles: NewsArticle[] = [];
     const sourceIds: string[] = [];
-    for (const result of settled) {
-      if (result.status !== "fulfilled") continue;
+    const failedSourceIds: string[] = [];
+    settled.forEach((result, index) => {
+      if (result.status !== "fulfilled") {
+        const source = sources[index];
+        if (source) failedSourceIds.push(newsCapabilitySourceId(source));
+        return;
+      }
       articles.push(...result.value.articles);
       sourceIds.push(newsCapabilitySourceId(result.value.source));
-    }
-    return { articles, sourceIds };
+    });
+    return { articles, sourceIds, failedSourceIds };
+  }
+
+  private trackSourceRequest<T>(
+    source: NewsCapability,
+    operation: string,
+    request: () => Promise<T>,
+  ): Promise<T> {
+    return this.connectionHealth?.hasSource(source.id)
+      ? this.connectionHealth.track(source.id, operation, request)
+      : request();
   }
 
   private seedCachedSource(source: NewsCapability): void {

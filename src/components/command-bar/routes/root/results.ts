@@ -13,6 +13,7 @@ import {
 } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import { isCollectionCommand } from "../../helpers";
+import { dedupeById } from "../../view-model";
 import type { ResultItem } from "../../list/model";
 import type { parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
@@ -20,6 +21,13 @@ import { createRootCommandItemBuilder } from "./command-items";
 import { buildRootShortcutItem } from "./shortcut-items";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
+
+/** The ART plugin command claims the prefix, so article rows must still be shown. */
+export function isArticleLookupShortcut(intent: RootShortcutIntent): boolean {
+  return intent.kind !== "none"
+    && intent.source === "plugin-command"
+    && intent.command.id === "open-news-article";
+}
 
 interface PaneTemplateItemOptions {
   category?: string;
@@ -67,6 +75,7 @@ export interface RootResultModelOptions {
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
   rootQuery: string;
   rootShortcutIntent: RootShortcutIntent;
+  articleResultItems?: ResultItem[];
   runDirectCommand: (command: Command, arg: string) => void;
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   state: AppState;
@@ -74,9 +83,17 @@ export interface RootResultModelOptions {
 }
 
 /** An in-flight or answered request keeps its rows even if the heuristic lapses. */
-function isAssistSectionVisible(assist: AssistRowHandlers, query: string, resultCount: number): boolean {
+function isAssistSectionVisible(
+  assist: AssistRowHandlers,
+  query: string,
+  resultCount: number,
+  hasShortcutIntent: boolean,
+): boolean {
   if (!query.trim()) return false;
   if (assist.state.status !== "idle" && assist.state.query === query.trim()) return true;
+  // A resolved shortcut is the user speaking the command language, so nothing is
+  // asked of the AI, and a sign-up offer must not outrank that exact match.
+  if (hasShortcutIntent) return false;
   // Signed out there is nothing to wait for, so the older heuristic still picks
   // the queries worth offering a sign-up row for.
   if (!assist.enabled) return shouldShowAssistRow({ query, resultCount });
@@ -108,6 +125,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     pluginCommandResultItems,
     rootQuery,
     rootShortcutIntent,
+    articleResultItems = [],
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,
@@ -157,19 +175,18 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
         includePromptableTickerTemplates: true,
       })
       : [];
-    const seenItemIds = new Set<string>();
-    for (const item of [...templateItems, ...relatedTemplateItems]) {
-      if (seenItemIds.has(item.id)) continue;
-      seenItemIds.add(item.id);
-      items.push(item);
-    }
+    items.push(...templateItems, ...relatedTemplateItems);
   } else if (
     rootShortcutIntent.kind !== "none"
     && rootShortcutIntent.source === "plugin-command"
     && shortcutItem
   ) {
-    const dynamicItems = pluginCommandResultItems(rootShortcutIntent.command, rootShortcutIntent.argText);
-    items.push(...(dynamicItems.length > 0 ? dynamicItems : [shortcutItem]));
+    if (isArticleLookupShortcut(rootShortcutIntent)) {
+      items.push(shortcutItem);
+    } else {
+      const dynamicItems = pluginCommandResultItems(rootShortcutIntent.command, rootShortcutIntent.argText);
+      items.push(...(dynamicItems.length > 0 ? dynamicItems : [shortcutItem]));
+    }
   } else if (match && match.command.id === "plugins") {
     items.push(...buildPluginItems(match.arg));
   } else if (match && match.command.id === "layout") {
@@ -227,12 +244,22 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...matchedItems);
   }
 
+  if (rootShortcutIntent.kind === "none" || isArticleLookupShortcut(rootShortcutIntent)) {
+    items.push(...articleResultItems);
+  }
+
   // Built from the local matches, then moved above them: the AI answers the
   // question the user typed, so it leads the list. Rows landing here renumber
   // everything below, which the root selection effect absorbs by identity.
-  const assistItems = assist && isAssistSectionVisible(assist, rootQuery, items.length)
+  const assistItems = assist
+    && isAssistSectionVisible(
+      assist,
+      rootQuery,
+      items.length,
+      rootShortcutIntent.kind !== "none" && !isArticleLookupShortcut(rootShortcutIntent),
+    )
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];
 
-  return { items: [...assistItems, ...items], initialIdx };
+  return { items: dedupeById([...assistItems, ...items]), initialIdx };
 }

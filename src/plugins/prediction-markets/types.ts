@@ -4,7 +4,7 @@ import type { PredictionCategoryId } from "./categories";
 export type PredictionVenue = "polymarket" | "kalshi";
 export type PredictionVenueScope = "all" | PredictionVenue;
 export type PredictionBrowseTab = "top" | "ending" | "new" | "watchlist";
-export type PredictionDetailTab = "overview" | "book" | "trades" | "rules";
+export type PredictionDetailTab = "overview" | "chart" | "book" | "trades" | "rules";
 export type PredictionHistoryRange = "1D" | "1W" | "1M" | "ALL";
 export type PredictionVolumeUnit = "usd" | "contracts";
 type PredictionSortDirection = "asc" | "desc";
@@ -99,6 +99,8 @@ export interface PredictionBookSnapshot {
   noBids: PredictionBookLevel[];
   noAsks: PredictionBookLevel[];
   lastTradePrice: number | null;
+  /** Set when the venue book request failed, so empty depth is never reported as "no depth". */
+  error?: string | null;
 }
 
 export interface PredictionTrade {
@@ -117,14 +119,6 @@ export interface PredictionMarketDetail {
   history: PredictionHistoryPoint[];
   book: PredictionBookSnapshot;
   trades: PredictionTrade[];
-}
-
-export interface PredictionOrderPreviewIntent {
-  marketKey: string;
-  outcome: "yes" | "no";
-  side: "buy" | "sell";
-  price: number;
-  size: number;
 }
 
 export interface PredictionColumnDef extends ColumnConfig {

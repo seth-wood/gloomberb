@@ -429,6 +429,7 @@ export const ko: Record<string, string> = {
   "Lock this pane to Polymarket.": "이 패널을 Polymarket으로 고정합니다.",
   "Hide the top venue tabs and lock this pane to one scope.": "상단 거래소 탭을 숨기고 패널을 한 범위로 고정합니다.",
   "Interactive Brokers market data, account sync, and trading.": "Interactive Brokers 시장 데이터, 계좌 동기화 및 거래.",
+  "Charles Schwab account sync and portfolio tracking.": "Charles Schwab 계좌 동기화 및 포트폴리오 추적.",
   "Free market, macro, and chat services. Chat requires signup.": "무료 시장 데이터, 거시경제 및 채팅 서비스. 채팅은 가입 필요.",
 
   // ── Settings fields ──────────────────────────────────────────
@@ -609,6 +610,12 @@ export const ko: Record<string, string> = {
   "   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)": "   Gloomberb 로컬 API 포트 자동 감지(4001, 4002, 7496, 7497)",
   "   Use Manual setup only if you need a custom host or exact socket port": "   사용자 지정 호스트나 정확한 소켓 포트가 필요할 때만 수동 설정 사용",
   "4. Keep it running while using Gloomberb": "4. Gloomberb 사용 중 실행 상태 유지",
+  "You'll need a Schwab developer app and OAuth login:": "Schwab 개발자 앱과 OAuth 로그인이 필요합니다:",
+  "1. Create an Individual Trader API app at the Schwab Developer Portal": "1. Schwab Developer Portal에서 Individual Trader API 앱 생성",
+  "2. Set the callback URL to https://127.0.0.1:8182 (must match exactly)": "2. 콜백 URL을 https://127.0.0.1:8182로 설정(정확히 일치해야 함)",
+  "3. Copy the App Key and App Secret into your broker profile": "3. App Key와 App Secret을 브로커 프로필에 입력",
+  "4. Connect — Gloomberb opens Schwab in your browser. Continue past the 127.0.0.1 certificate warning if shown": "4. 연결 — Gloomberb가 브라우저에서 Schwab을 엽니다. 127.0.0.1 인증서 경고가 나오면 계속",
+  "5. Every 7 days Schwab requires another browser sign-in (password/MFA). Gloomberb will reopen the login": "5. 7일마다 Schwab은 브라우저 재로그인(비밀번호/MFA)을 요구합니다. Gloomberb가 로그인 화면을 다시 엽니다",
   "You'll need your {broker} API credentials.": "{broker} API 자격 증명이 필요합니다.",
   "Connecting to {broker} and importing accounts and positions...": "{broker} 연결 및 계좌·포지션 가져오는 중...",
   "Unable to sync {broker}.": "{broker}을(를) 동기화할 수 없습니다.",

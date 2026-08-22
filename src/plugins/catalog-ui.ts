@@ -6,7 +6,11 @@ import { aiPlugin } from "./builtin/ai";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
 import { ibkrPlugin } from "./ibkr";
 import { schwabPlugin } from "./schwab";
+import { publicPlugin } from "./broker-sync/public";
+import { robinhoodPlugin } from "./broker-sync/robinhood";
+import { simpleFinPlugin } from "./broker-sync/simplefin";
 import { predictionMarketsPlugin } from "./prediction-markets";
+import { pollsPlugin } from "./builtin/polls";
 import { alertsPlugin } from "./builtin/alerts";
 import {
   applicationPlugin,
@@ -24,12 +28,16 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   brokerPlugin,
   ibkrPlugin,
   schwabPlugin,
+  publicPlugin,
+  robinhoodPlugin,
+  simpleFinPlugin,
   applicationPlugin,
   newsPlugin,
   substackPlugin,
   notesPlugin,
   aiPlugin,
   predictionMarketsPlugin,
+  pollsPlugin,
   marketOverviewPlugin,
   macroPlugin,
   alertsPlugin,

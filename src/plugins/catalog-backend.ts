@@ -17,7 +17,11 @@ import { tickerResearchBackendPlugin } from "./builtin/ticker-research-backend-p
 import { yahooPlugin } from "./builtin/yahoo";
 import { ibkrPlugin } from "./ibkr";
 import { schwabPlugin } from "./schwab";
+import { publicPlugin } from "./broker-sync/public";
+import { robinhoodPlugin } from "./broker-sync/robinhood";
+import { simpleFinPlugin } from "./broker-sync/simplefin";
 import { predictionMarketsBackendPlugin } from "./prediction-markets/backend-plugin";
+import { pollsPlugin } from "./builtin/polls";
 
 const desktopBackendPlugins: GloomPlugin[] = [
   yahooPlugin,
@@ -27,12 +31,16 @@ const desktopBackendPlugins: GloomPlugin[] = [
   brokerPlugin,
   ibkrPlugin,
   schwabPlugin,
+  publicPlugin,
+  robinhoodPlugin,
+  simpleFinPlugin,
   applicationPlugin,
   newsPlugin,
   substackPlugin,
   notesPlugin,
   aiPlugin,
   predictionMarketsBackendPlugin,
+  pollsPlugin,
   marketOverviewPlugin,
   macroPlugin,
   alertsPlugin,
